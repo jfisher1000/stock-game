@@ -116,17 +116,41 @@ const AuthPage = () => {
 
 const LobbyPage = ({ user, onSelectCompetition, onGoToAdmin }) => {
     const [competitions, setCompetitions] = useState([]);
+    const [userPortfolios, setUserPortfolios] = useState({});
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         const q = query(collection(db, "competitions"));
-        const unsubscribe = onSnapshot(q, (querySnapshot) => {
+        const unsubscribeComps = onSnapshot(q, (querySnapshot) => {
             const comps = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             setCompetitions(comps);
             setLoading(false);
         }, (error) => { console.error("Error fetching competitions: ", error); setLoading(false); });
-        return () => unsubscribe();
-    }, []);
+
+        // Fetch all of the user's portfolios across all competitions
+        const portfolios = {};
+        const fetchPortfolios = async () => {
+            const compQuery = await getDoc(collection(db, "competitions"));
+            for (const compDoc of compQuery.docs) {
+                const portfolioDocRef = doc(db, `competitions/${compDoc.id}/participants`, user.uid);
+                const portfolioSnap = await getDoc(portfolioDocRef);
+                if (portfolioSnap.exists()) {
+                    portfolios[compDoc.id] = true;
+                }
+            }
+            setUserPortfolios(portfolios);
+        };
+        fetchPortfolios();
+
+        return () => unsubscribeComps();
+    }, [user.uid]);
+    
+    const handleJoinCompetition = async (competition) => {
+        const portfolioDocRef = doc(db, `competitions/${competition.id}/participants`, user.uid);
+        const initialPortfolio = { cash: competition.initialCash, stocks: {} };
+        await setDoc(portfolioDocRef, initialPortfolio);
+        onSelectCompetition(competition.id);
+    };
 
     return (
         <div className="min-h-screen bg-gray-900 text-white p-4 sm:p-6 lg:p-8">
@@ -152,7 +176,11 @@ const LobbyPage = ({ user, onSelectCompetition, onGoToAdmin }) => {
                                         <p className="text-sm text-gray-500">Ends: {formatDate(comp.endDate)}</p>
                                         <p className="text-lg font-semibold mt-3">Starting Cash: {formatCurrency(comp.initialCash)}</p>
                                     </div>
-                                    <button onClick={() => onSelectCompetition(comp.id)} className="mt-6 w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md transition">View Competition</button>
+                                    {userPortfolios[comp.id] ? (
+                                        <button onClick={() => onSelectCompetition(comp.id)} className="mt-6 w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md transition">View Competition</button>
+                                    ) : (
+                                        <button onClick={() => handleJoinCompetition(comp)} className="mt-6 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md transition">Join Competition</button>
+                                    )}
                                 </div>
                             ))}
                         </div>
@@ -173,8 +201,8 @@ const CompetitionPage = ({ user, competitionId, onExit }) => {
     const [portfolio, setPortfolio] = useState(null);
     const [stockData, setStockData] = useState({});
     const [modalState, setModalState] = useState({ title: null, content: '', isLoading: false });
+    const [error, setError] = useState('');
 
-    // Load competition details and user's portfolio for this competition
     useEffect(() => {
         const compDocRef = doc(db, 'competitions', competitionId);
         const unsubscribeComp = onSnapshot(compDocRef, (docSnap) => {
@@ -190,22 +218,13 @@ const CompetitionPage = ({ user, competitionId, onExit }) => {
         });
 
         const portfolioDocRef = doc(db, `competitions/${competitionId}/participants`, user.uid);
-        const unsubscribePortfolio = onSnapshot(portfolioDocRef, async (docSnap) => {
-            if (!docSnap.exists()) {
-                const compData = await getDoc(compDocRef);
-                if (compData.exists()) {
-                    const initialPortfolio = { cash: compData.data().initialCash, stocks: {} };
-                    await setDoc(portfolioDocRef, initialPortfolio);
-                }
-            } else {
-                setPortfolio(docSnap.data());
-            }
+        const unsubscribePortfolio = onSnapshot(portfolioDocRef, (docSnap) => {
+            setPortfolio(docSnap.data());
         });
 
         return () => { unsubscribeComp(); unsubscribePortfolio(); };
     }, [competitionId, user.uid]);
 
-    // Simulate stock price changes
     useEffect(() => {
         if (!competition) return;
         const interval = setInterval(() => {
@@ -223,16 +242,36 @@ const CompetitionPage = ({ user, competitionId, onExit }) => {
         return () => clearInterval(interval);
     }, [competition]);
     
-    // --- Gemini API Calls ---
+    const handleTrade = async (symbol, quantity, type) => {
+        if (!portfolio) return;
+        setError('');
+        const price = stockData[symbol].price;
+        const cost = price * quantity;
+        const newPortfolio = JSON.parse(JSON.stringify(portfolio));
+
+        if (type === 'buy') {
+            if (newPortfolio.cash < cost) { setError("Not enough cash."); return; }
+            newPortfolio.cash -= cost;
+            newPortfolio.stocks[symbol] = { quantity: (newPortfolio.stocks[symbol]?.quantity || 0) + quantity };
+        } else { // sell
+            const sharesOwned = newPortfolio.stocks[symbol]?.quantity || 0;
+            if (quantity > sharesOwned) { setError("Not enough shares to sell."); return; }
+            newPortfolio.cash += cost;
+            newPortfolio.stocks[symbol].quantity -= quantity;
+            if (newPortfolio.stocks[symbol].quantity === 0) { delete newPortfolio.stocks[symbol]; }
+        }
+        
+        const portfolioDocRef = doc(db, `competitions/${competitionId}/participants`, user.uid);
+        await setDoc(portfolioDocRef, newPortfolio);
+    };
+    
     const getAiAnalysis = async (symbol) => {
         setModalState({ title: `✨ AI Analysis for ${symbol}`, content: '', isLoading: true });
         const stock = stockData[symbol];
         const prompt = `You are a witty but insightful stock market analyst for a fun trading game. The stock is ${symbol}. Its recent simulated price history is: ${stock.history.map(p => formatCurrency(p)).join(', ')}. Provide a short, creative, and slightly humorous analysis (2-3 sentences) about its potential future performance. Do not give financial advice.`;
         try {
             const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] })
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] })
             });
             const result = await response.json();
             setModalState({ title: `✨ AI Analysis for ${symbol}`, content: result.candidates[0].content.parts[0].text, isLoading: false });
@@ -247,9 +286,7 @@ const CompetitionPage = ({ user, competitionId, onExit }) => {
         const prompt = `You are a helpful and creative portfolio advisor for a stock trading game. My current portfolio has ${formatCurrency(portfolio.cash)} in cash and the following stocks: ${holdings || 'none'}. Based on this, provide one actionable, creative, and fun suggestion for my next move. This is for a game, so be imaginative. Do not give real financial advice. Keep it to 2-4 sentences.`;
         try {
             const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] })
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] })
             });
             const result = await response.json();
             setModalState({ title: `✨ AI Portfolio Advisor`, content: result.candidates[0].content.parts[0].text, isLoading: false });
@@ -259,7 +296,7 @@ const CompetitionPage = ({ user, competitionId, onExit }) => {
     };
 
     if (!competition || !portfolio) {
-        return <div className="bg-gray-900 min-h-screen flex items-center justify-center text-white"><p>Joining Competition...</p></div>;
+        return <div className="bg-gray-900 min-h-screen flex items-center justify-center text-white"><p>Loading Competition...</p></div>;
     }
 
     const portfolioValue = Object.entries(portfolio.stocks).reduce((total, [symbol, stock]) => total + (stock.quantity * (stockData[symbol]?.price || 0)), 0);
@@ -283,14 +320,20 @@ const CompetitionPage = ({ user, competitionId, onExit }) => {
                             <div><p className="text-gray-400 text-sm">Stocks</p><p className="text-2xl font-semibold text-blue-400">{formatCurrency(portfolioValue)}</p></div>
                             <div><p className="text-gray-400 text-sm">Total</p><p className="text-2xl font-bold text-yellow-400">{formatCurrency(totalValue)}</p></div>
                          </div>
+                         <div className="mt-4 border-t border-gray-700 pt-4">
+                             <h3 className="font-bold text-lg mb-2">My Holdings</h3>
+                             {Object.keys(portfolio.stocks).length > 0 ? Object.entries(portfolio.stocks).map(([symbol, data]) => (
+                                <div key={symbol} className="flex justify-between items-center bg-gray-900 p-2 rounded-md">
+                                    <span>{data.quantity} x {symbol}</span>
+                                    <span>{formatCurrency(data.quantity * (stockData[symbol]?.price || 0))}</span>
+                                </div>
+                             )) : <p className="text-gray-500">No stocks owned yet.</p>}
+                         </div>
                     </div>
+                    {error && <div className="bg-red-500 text-white p-3 rounded-md mb-4 text-center">{error}</div>}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         {Object.entries(stockData).map(([symbol, data]) => (
-                            <div key={symbol} className="bg-gray-800 p-4 rounded-lg shadow-md">
-                                <h3 className="text-xl font-bold">{symbol}</h3>
-                                <p className="text-2xl font-light text-green-400">{formatCurrency(data.price)}</p>
-                                <button onClick={() => getAiAnalysis(symbol)} className="w-full mt-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md transition">✨ Analyze</button>
-                            </div>
+                            <Stock key={symbol} symbol={symbol} data={data} portfolio={portfolio} onTrade={handleTrade} onAnalyze={getAiAnalysis} />
                         ))}
                     </div>
                 </div>
@@ -301,6 +344,28 @@ const CompetitionPage = ({ user, competitionId, onExit }) => {
                     </div>
                 </aside>
             </main>
+        </div>
+    );
+};
+
+const Stock = ({ symbol, data, portfolio, onTrade, onAnalyze }) => {
+    const [quantity, setQuantity] = useState(1);
+    const sharesOwned = portfolio?.stocks?.[symbol]?.quantity || 0;
+    return (
+        <div className="bg-gray-800 p-4 rounded-lg shadow-md flex flex-col justify-between">
+            <div>
+                <h3 className="text-xl font-bold">{symbol}</h3>
+                <p className="text-2xl font-light text-green-400">{formatCurrency(data.price)}</p>
+                {sharesOwned > 0 && <p className="text-sm text-yellow-400 mt-1">Owned: {sharesOwned}</p>}
+            </div>
+            <div className="mt-4 flex flex-col space-y-2">
+                <button onClick={() => onAnalyze(symbol)} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md transition">✨ Analyze</button>
+                <div className="flex items-center space-x-2">
+                    <input type="number" value={quantity} onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))} className="w-20 bg-gray-900 text-white p-2 rounded-md border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500" min="1" />
+                    <button onClick={() => onTrade(symbol, quantity, 'buy')} className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md transition">Buy</button>
+                    <button onClick={() => onTrade(symbol, quantity, 'sell')} className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-md transition disabled:bg-red-900 disabled:cursor-not-allowed" disabled={sharesOwned === 0}>Sell</button>
+                </div>
+            </div>
         </div>
     );
 };
@@ -329,25 +394,11 @@ const AdminPage = ({ onExit }) => {
         try {
             const tradableAssets = assets.split(',').reduce((acc, symbol) => {
                 const trimmedSymbol = symbol.trim().toUpperCase();
-                if (trimmedSymbol) {
-                    acc[trimmedSymbol] = 100; // Default starting price
-                }
+                if (trimmedSymbol) { acc[trimmedSymbol] = 100; }
                 return acc;
             }, {});
-
-            await addDoc(collection(db, 'competitions'), {
-                name,
-                description,
-                initialCash: Number(initialCash),
-                startDate: Timestamp.now(),
-                endDate: Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)), // 30 days from now
-                tradableAssets
-            });
-            // Reset form
-            setName('');
-            setDescription('');
-            setInitialCash(100000);
-            setAssets('AAPL,GOOGL,MSFT');
+            await addDoc(collection(db, 'competitions'), { name, description, initialCash: Number(initialCash), startDate: Timestamp.now(), endDate: Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)), tradableAssets });
+            setName(''); setDescription(''); setInitialCash(100000); setAssets('AAPL,GOOGL,MSFT');
         } catch (err) {
             setError(err.message);
         }
@@ -361,7 +412,6 @@ const AdminPage = ({ onExit }) => {
                 <button onClick={onExit} className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-md transition">&larr; Back to Lobby</button>
             </header>
             <main className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8">
-                {/* Create Competition Form */}
                 <div className="bg-gray-800 p-6 rounded-lg">
                     <h2 className="text-2xl font-bold mb-4">Create New Competition</h2>
                     <form onSubmit={handleCreateCompetition}>
@@ -373,7 +423,6 @@ const AdminPage = ({ onExit }) => {
                         <button type="submit" className="w-full bg-purple-600 hover:bg-purple-700 font-bold py-2 rounded" disabled={loading}>{loading ? 'Creating...' : 'Create Competition'}</button>
                     </form>
                 </div>
-                {/* Existing Competitions List */}
                 <div className="bg-gray-800 p-6 rounded-lg">
                     <h2 className="text-2xl font-bold mb-4">Existing Competitions</h2>
                     <div className="space-y-3">
@@ -384,7 +433,6 @@ const AdminPage = ({ onExit }) => {
         </div>
     );
 };
-
 
 const App = () => {
     const [user, setUser] = useState(null);
