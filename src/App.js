@@ -17,7 +17,8 @@ import {
     onSnapshot,
     writeBatch,
     Timestamp,
-    addDoc
+    addDoc,
+    getDocs
 } from 'firebase/firestore';
 
 // --- Firebase Configuration ---
@@ -127,10 +128,9 @@ const LobbyPage = ({ user, onSelectCompetition, onGoToAdmin }) => {
             setLoading(false);
         }, (error) => { console.error("Error fetching competitions: ", error); setLoading(false); });
 
-        // Fetch all of the user's portfolios across all competitions
         const portfolios = {};
         const fetchPortfolios = async () => {
-            const compQuery = await getDoc(collection(db, "competitions"));
+            const compQuery = await getDocs(collection(db, "competitions"));
             for (const compDoc of compQuery.docs) {
                 const portfolioDocRef = doc(db, `competitions/${compDoc.id}/participants`, user.uid);
                 const portfolioSnap = await getDoc(portfolioDocRef);
@@ -399,7 +399,7 @@ const AdminPage = ({ onExit }) => {
             }, {});
             await addDoc(collection(db, 'competitions'), { name, description, initialCash: Number(initialCash), startDate: Timestamp.now(), endDate: Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)), tradableAssets });
             setName(''); setDescription(''); setInitialCash(100000); setAssets('AAPL,GOOGL,MSFT');
-        } catch (err) {
+        } catch (err) => {
             setError(err.message);
         }
         setLoading(false);
