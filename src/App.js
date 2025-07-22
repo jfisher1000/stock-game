@@ -271,7 +271,9 @@ const CompetitionPage = ({ user, competitionId, onExit }) => {
         const prompt = `You are a witty but insightful stock market analyst for a fun trading game. The stock is ${symbol}. Its recent simulated price history is: ${stock.history.map(p => formatCurrency(p)).join(', ')}. Provide a short, creative, and slightly humorous analysis (2-3 sentences) about its potential future performance. Do not give financial advice.`;
         try {
             const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] })
+                method: 'POST', 
+                headers: { 'Content-Type': 'application/json' }, 
+                body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] })
             });
             const result = await response.json();
             setModalState({ title: `✨ AI Analysis for ${symbol}`, content: result.candidates[0].content.parts[0].text, isLoading: false });
@@ -286,7 +288,9 @@ const CompetitionPage = ({ user, competitionId, onExit }) => {
         const prompt = `You are a helpful and creative portfolio advisor for a stock trading game. My current portfolio has ${formatCurrency(portfolio.cash)} in cash and the following stocks: ${holdings || 'none'}. Based on this, provide one actionable, creative, and fun suggestion for my next move. This is for a game, so be imaginative. Do not give real financial advice. Keep it to 2-4 sentences.`;
         try {
             const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] })
+                method: 'POST', 
+                headers: { 'Content-Type': 'application/json' }, 
+                body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] })
             });
             const result = await response.json();
             setModalState({ title: `✨ AI Portfolio Advisor`, content: result.candidates[0].content.parts[0].text, isLoading: false });
@@ -399,7 +403,7 @@ const AdminPage = ({ onExit }) => {
             }, {});
             await addDoc(collection(db, 'competitions'), { name, description, initialCash: Number(initialCash), startDate: Timestamp.now(), endDate: Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)), tradableAssets });
             setName(''); setDescription(''); setInitialCash(100000); setAssets('AAPL,GOOGL,MSFT');
-        } catch (err) => {
+        } catch (err) {
             setError(err.message);
         }
         setLoading(false);
