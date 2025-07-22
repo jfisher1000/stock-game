@@ -16,7 +16,8 @@ import {
     query,
     onSnapshot,
     writeBatch,
-    Timestamp
+    Timestamp,
+    addDoc
 } from 'firebase/firestore';
 
 // --- Firebase Configuration ---
@@ -113,7 +114,7 @@ const AuthPage = () => {
     );
 };
 
-const LobbyPage = ({ user, onSelectCompetition }) => {
+const LobbyPage = ({ user, onSelectCompetition, onGoToAdmin }) => {
     const [competitions, setCompetitions] = useState([]);
     const [loading, setLoading] = useState(true);
 
@@ -123,10 +124,7 @@ const LobbyPage = ({ user, onSelectCompetition }) => {
             const comps = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             setCompetitions(comps);
             setLoading(false);
-        }, (error) => { 
-            console.error("Error fetching competitions: ", error); 
-            setLoading(false); 
-        });
+        }, (error) => { console.error("Error fetching competitions: ", error); setLoading(false); });
         return () => unsubscribe();
     }, []);
 
@@ -134,7 +132,12 @@ const LobbyPage = ({ user, onSelectCompetition }) => {
         <div className="min-h-screen bg-gray-900 text-white p-4 sm:p-6 lg:p-8">
             <header className="max-w-5xl mx-auto flex justify-between items-center mb-8">
                 <div><h1 className="text-3xl font-bold">Welcome, {user.username || 'Player'}!</h1><p className="text-gray-400">Choose a competition to join.</p></div>
-                <button onClick={() => signOut(auth)} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-md transition">Logout</button>
+                <div>
+                    {user.role === 'admin' && (
+                        <button onClick={onGoToAdmin} className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-md transition mr-4">Admin Panel</button>
+                    )}
+                    <button onClick={() => signOut(auth)} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-md transition">Logout</button>
+                </div>
             </header>
             <main className="max-w-5xl mx-auto">
                 {loading ? <p>Loading competitions...</p> : (
@@ -178,7 +181,6 @@ const CompetitionPage = ({ user, competitionId, onExit }) => {
             if (docSnap.exists()) {
                 const compData = docSnap.data();
                 setCompetition(compData);
-                // Initialize stock data with prices from competition document
                 const initialPrices = {};
                 Object.keys(compData.tradableAssets).forEach(symbol => {
                     initialPrices[symbol] = { price: compData.tradableAssets[symbol], history: [compData.tradableAssets[symbol]] };
@@ -190,7 +192,6 @@ const CompetitionPage = ({ user, competitionId, onExit }) => {
         const portfolioDocRef = doc(db, `competitions/${competitionId}/participants`, user.uid);
         const unsubscribePortfolio = onSnapshot(portfolioDocRef, async (docSnap) => {
             if (!docSnap.exists()) {
-                // If user has no portfolio for this comp, create one
                 const compData = await getDoc(compDocRef);
                 if (compData.exists()) {
                     const initialPortfolio = { cash: compData.data().initialCash, stocks: {} };
@@ -275,7 +276,6 @@ const CompetitionPage = ({ user, competitionId, onExit }) => {
             </header>
             <main className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <div className="lg:col-span-2">
-                    {/* Portfolio Section */}
                     <div className="bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
                          <div className="flex justify-between items-start mb-4"><h2 className="text-2xl font-bold">My Portfolio</h2><button onClick={getAiPortfolioAdvice} className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-3 rounded-md transition -mt-1">✨ Get AI Advice</button></div>
                          <div className="grid grid-cols-3 gap-4 text-center">
@@ -284,7 +284,6 @@ const CompetitionPage = ({ user, competitionId, onExit }) => {
                             <div><p className="text-gray-400 text-sm">Total</p><p className="text-2xl font-bold text-yellow-400">{formatCurrency(totalValue)}</p></div>
                          </div>
                     </div>
-                    {/* Market Section */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         {Object.entries(stockData).map(([symbol, data]) => (
                             <div key={symbol} className="bg-gray-800 p-4 rounded-lg shadow-md">
@@ -296,7 +295,6 @@ const CompetitionPage = ({ user, competitionId, onExit }) => {
                     </div>
                 </div>
                 <aside>
-                    {/* Leaderboard Section */}
                     <div className="bg-gray-800 p-6 rounded-xl shadow-lg">
                         <h2 className="text-2xl font-bold mb-4">Leaderboard</h2>
                         <p className="text-gray-400">(Leaderboard coming soon)</p>
@@ -306,6 +304,87 @@ const CompetitionPage = ({ user, competitionId, onExit }) => {
         </div>
     );
 };
+
+const AdminPage = ({ onExit }) => {
+    const [competitions, setCompetitions] = useState([]);
+    const [name, setName] = useState('');
+    const [description, setDescription] = useState('');
+    const [initialCash, setInitialCash] = useState(100000);
+    const [assets, setAssets] = useState('AAPL,GOOGL,MSFT');
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+
+    useEffect(() => {
+        const q = query(collection(db, "competitions"));
+        const unsubscribe = onSnapshot(q, (querySnapshot) => {
+            setCompetitions(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        });
+        return () => unsubscribe();
+    }, []);
+
+    const handleCreateCompetition = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setError('');
+        try {
+            const tradableAssets = assets.split(',').reduce((acc, symbol) => {
+                const trimmedSymbol = symbol.trim().toUpperCase();
+                if (trimmedSymbol) {
+                    acc[trimmedSymbol] = 100; // Default starting price
+                }
+                return acc;
+            }, {});
+
+            await addDoc(collection(db, 'competitions'), {
+                name,
+                description,
+                initialCash: Number(initialCash),
+                startDate: Timestamp.now(),
+                endDate: Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)), // 30 days from now
+                tradableAssets
+            });
+            // Reset form
+            setName('');
+            setDescription('');
+            setInitialCash(100000);
+            setAssets('AAPL,GOOGL,MSFT');
+        } catch (err) {
+            setError(err.message);
+        }
+        setLoading(false);
+    };
+
+    return (
+        <div className="min-h-screen bg-gray-900 text-white p-4 sm:p-6 lg:p-8">
+            <header className="max-w-5xl mx-auto flex justify-between items-center mb-8">
+                <h1 className="text-3xl font-bold text-purple-400">Admin Panel</h1>
+                <button onClick={onExit} className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-md transition">&larr; Back to Lobby</button>
+            </header>
+            <main className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8">
+                {/* Create Competition Form */}
+                <div className="bg-gray-800 p-6 rounded-lg">
+                    <h2 className="text-2xl font-bold mb-4">Create New Competition</h2>
+                    <form onSubmit={handleCreateCompetition}>
+                        <div className="mb-4"><label className="block text-gray-400 mb-2">Name</label><input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full bg-gray-900 p-2 rounded" required /></div>
+                        <div className="mb-4"><label className="block text-gray-400 mb-2">Description</label><textarea value={description} onChange={e => setDescription(e.target.value)} className="w-full bg-gray-900 p-2 rounded" required /></div>
+                        <div className="mb-4"><label className="block text-gray-400 mb-2">Initial Cash</label><input type="number" value={initialCash} onChange={e => setInitialCash(e.target.value)} className="w-full bg-gray-900 p-2 rounded" required /></div>
+                        <div className="mb-4"><label className="block text-gray-400 mb-2">Tradable Assets (comma-separated)</label><input type="text" value={assets} onChange={e => setAssets(e.target.value)} className="w-full bg-gray-900 p-2 rounded" placeholder="e.g., AAPL, GOOGL, TSLA" required /></div>
+                        {error && <p className="text-red-500 mb-4">{error}</p>}
+                        <button type="submit" className="w-full bg-purple-600 hover:bg-purple-700 font-bold py-2 rounded" disabled={loading}>{loading ? 'Creating...' : 'Create Competition'}</button>
+                    </form>
+                </div>
+                {/* Existing Competitions List */}
+                <div className="bg-gray-800 p-6 rounded-lg">
+                    <h2 className="text-2xl font-bold mb-4">Existing Competitions</h2>
+                    <div className="space-y-3">
+                        {competitions.map(comp => <div key={comp.id} className="bg-gray-900 p-3 rounded">{comp.name}</div>)}
+                    </div>
+                </div>
+            </main>
+        </div>
+    );
+};
+
 
 const App = () => {
     const [user, setUser] = useState(null);
@@ -335,10 +414,12 @@ const App = () => {
     }
 
     switch (page.name) {
+        case 'admin':
+            return <AdminPage onExit={() => setPage({ name: 'lobby' })} />;
         case 'competition':
             return <CompetitionPage user={user} competitionId={page.competitionId} onExit={() => setPage({ name: 'lobby' })} />;
         default:
-            return <LobbyPage user={user} onSelectCompetition={(id) => setPage({ name: 'competition', competitionId: id })} />;
+            return <LobbyPage user={user} onSelectCompetition={(id) => setPage({ name: 'competition', competitionId: id })} onGoToAdmin={() => setPage({ name: 'admin' })} />;
     }
 };
 
