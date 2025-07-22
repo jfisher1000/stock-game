@@ -20,9 +20,15 @@ import {
 } from 'firebase/firestore';
 
 // --- Firebase Configuration ---
-const firebaseConfig = typeof __firebase_config !== 'undefined' 
-    ? JSON.parse(__firebase_config) 
-    : { apiKey: "your-fallback-api-key", authDomain: "your-fallback-auth-domain", projectId: "your-fallback-project-id" };
+const firebaseConfig = {
+  apiKey: "AIzaSyCC_fIRnWLvovO4Mk2BLmecsisoSzgklGQ",
+  authDomain: "stock-game-26b54.firebaseapp.com",
+  projectId: "stock-game-26b54",
+  storageBucket: "stock-game-26b54.firebasestorage.app",
+  messagingSenderId: "455526292127",
+  appId: "1:455526292127:web:889ca05dab75b0c4ae60aa",
+  measurementId: "G-XQJ9HG5WLG"
+};
 
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-stock-game-v2';
 
