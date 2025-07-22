@@ -21,13 +21,14 @@ import {
 
 // --- Firebase Configuration ---
 // IMPORTANT: This object should be replaced with your actual Firebase project configuration.
-const firebaseConfig = { 
-    apiKey: "YOUR_API_KEY", 
-    authDomain: "YOUR_AUTH_DOMAIN", 
-    projectId: "YOUR_PROJECT_ID",
-    storageBucket: "YOUR_STORAGE_BUCKET",
-    messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-    appId: "YOUR_APP_ID"
+const firebaseConfig = {
+  apiKey: "AIzaSyCC_fIRnWLvovO4Mk2BLmecsisoSzgklGQ",
+  authDomain: "stock-game-26b54.firebaseapp.com",
+  projectId: "stock-game-26b54",
+  storageBucket: "stock-game-26b54.firebasestorage.app",
+  messagingSenderId: "455526292127",
+  appId: "1:455526292127:web:889ca05dab75b0c4ae60aa",
+  measurementId: "G-XQJ9HG5WLG"
 };
 
 // --- Initialize Firebase ---
