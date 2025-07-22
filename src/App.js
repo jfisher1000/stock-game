@@ -21,16 +21,14 @@ import {
 
 // --- Firebase Configuration ---
 // IMPORTANT: This object should be replaced with your actual Firebase project configuration.
-const firebaseConfig = {
-  apiKey: "AIzaSyCC_fIRnWLvovO4Mk2BLmecsisoSzgklGQ",
-  authDomain: "stock-game-26b54.firebaseapp.com",
-  projectId: "stock-game-26b54",
-  storageBucket: "stock-game-26b54.firebasestorage.app",
-  messagingSenderId: "455526292127",
-  appId: "1:455526292127:web:889ca05dab75b0c4ae60aa",
-  measurementId: "G-XQJ9HG5WLG"
+const firebaseConfig = { 
+    apiKey: "YOUR_API_KEY", 
+    authDomain: "YOUR_AUTH_DOMAIN", 
+    projectId: "YOUR_PROJECT_ID",
+    storageBucket: "YOUR_STORAGE_BUCKET",
+    messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+    appId: "YOUR_APP_ID"
 };
-
 
 // --- Initialize Firebase ---
 const app = initializeApp(firebaseConfig);
@@ -119,28 +117,15 @@ const LobbyPage = ({ user, onSelectCompetition }) => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const addDummyCompetition = async () => {
-            const competitionRef = doc(db, 'competitions', 'weekly-challenge-1');
-            const docSnap = await getDoc(competitionRef);
-            if (!docSnap.exists()) {
-                await setDoc(competitionRef, {
-                    name: "Weekly Stock Challenge",
-                    description: "Compete for the highest portfolio value in one week!",
-                    startDate: Timestamp.fromDate(new Date()),
-                    endDate: Timestamp.fromDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)),
-                    initialCash: 100000,
-                    tradableAssets: { 'AAPL': 172.29, 'GOOGL': 141.49, 'MSFT': 437.52, 'TSLA': 180.02, 'AMZN': 184.33, 'NVDA': 867.66 }
-                });
-            }
-        };
-        addDummyCompetition();
-
         const q = query(collection(db, "competitions"));
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             const comps = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             setCompetitions(comps);
             setLoading(false);
-        }, (error) => { console.error("Error fetching competitions: ", error); setLoading(false); });
+        }, (error) => { 
+            console.error("Error fetching competitions: ", error); 
+            setLoading(false); 
+        });
         return () => unsubscribe();
     }, []);
 
@@ -152,20 +137,27 @@ const LobbyPage = ({ user, onSelectCompetition }) => {
             </header>
             <main className="max-w-5xl mx-auto">
                 {loading ? <p>Loading competitions...</p> : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {competitions.map(comp => (
-                            <div key={comp.id} className="bg-gray-800 rounded-lg p-6 flex flex-col justify-between border border-gray-700 hover:border-indigo-500 transition-all">
-                                <div>
-                                    <h2 className="text-2xl font-bold text-indigo-400">{comp.name}</h2>
-                                    <p className="text-gray-400 mt-2 mb-4">{comp.description}</p>
-                                    <p className="text-sm text-gray-500">Starts: {formatDate(comp.startDate)}</p>
-                                    <p className="text-sm text-gray-500">Ends: {formatDate(comp.endDate)}</p>
-                                    <p className="text-lg font-semibold mt-3">Starting Cash: {formatCurrency(comp.initialCash)}</p>
+                    competitions.length > 0 ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {competitions.map(comp => (
+                                <div key={comp.id} className="bg-gray-800 rounded-lg p-6 flex flex-col justify-between border border-gray-700 hover:border-indigo-500 transition-all">
+                                    <div>
+                                        <h2 className="text-2xl font-bold text-indigo-400">{comp.name}</h2>
+                                        <p className="text-gray-400 mt-2 mb-4">{comp.description}</p>
+                                        <p className="text-sm text-gray-500">Starts: {formatDate(comp.startDate)}</p>
+                                        <p className="text-sm text-gray-500">Ends: {formatDate(comp.endDate)}</p>
+                                        <p className="text-lg font-semibold mt-3">Starting Cash: {formatCurrency(comp.initialCash)}</p>
+                                    </div>
+                                    <button onClick={() => onSelectCompetition(comp.id)} className="mt-6 w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md transition">View Competition</button>
                                 </div>
-                                <button onClick={() => onSelectCompetition(comp.id)} className="mt-6 w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md transition">View Competition</button>
-                            </div>
-                        ))}
-                    </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="text-center bg-gray-800 p-8 rounded-lg">
+                            <h2 className="text-2xl font-bold text-white">No Competitions Found</h2>
+                            <p className="text-gray-400 mt-2">The admin has not created any competitions yet. Please check back later.</p>
+                        </div>
+                    )
                 )}
             </main>
         </div>
