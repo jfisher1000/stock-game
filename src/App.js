@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
 import { 
     getAuth, 
@@ -15,14 +15,17 @@ import {
     collection,
     query,
     onSnapshot,
-    writeBatch,
     Timestamp,
     addDoc,
     getDocs
 } from 'firebase/firestore';
 
 // --- Firebase Configuration ---
-// IMPORTANT: This object should be replaced with your actual Firebase project configuration.
+// SECURE SETUP: Your Firebase config should be in a .env file in your project's root.
+// Create a file named .env and add your config like this:
+// REACT_APP_API_KEY=AIzaSy...
+// REACT_APP_AUTH_DOMAIN=your-project.firebaseapp.com
+// ...and so on for all the keys.
 const firebaseConfig = {
   apiKey: "AIzaSyCC_fIRnWLvovO4Mk2BLmecsisoSzgklGQ",
   authDomain: "stock-game-26b54.firebaseapp.com",
@@ -92,7 +95,8 @@ const AuthPage = () => {
             try {
                 const userCredential = await createUserWithEmailAndPassword(auth, email, password);
                 const userDocRef = doc(db, `users`, userCredential.user.uid);
-                await setDoc(userDocRef, { username: username, email: userCredential.user.email, createdAt: Timestamp.now() });
+                // You can add a 'role: "player"' field here if you want to explicitly define roles
+                await setDoc(userDocRef, { username: username, email: userCredential.user.email, createdAt: Timestamp.now(), role: 'player' });
             } catch (err) { setError(err.message); setLoading(false); }
         }
     };
@@ -115,22 +119,23 @@ const AuthPage = () => {
     );
 };
 
-const LobbyPage = ({ user, onSelectCompetition, onGoToAdmin }) => {
+const LobbyPage = ({ user, onSelectCompetition, onGoToAdmin, onGoToCreate }) => {
     const [competitions, setCompetitions] = useState([]);
     const [userPortfolios, setUserPortfolios] = useState({});
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        // Query for public competitions or private ones the user owns or is invited to (future enhancement)
         const q = query(collection(db, "competitions"));
         const unsubscribeComps = onSnapshot(q, (querySnapshot) => {
             const comps = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setCompetitions(comps);
+            setCompetitions(comps.filter(c => c.isPublic)); // For now, only show public competitions
             setLoading(false);
         }, (error) => { console.error("Error fetching competitions: ", error); setLoading(false); });
 
-        const portfolios = {};
         const fetchPortfolios = async () => {
             const compQuery = await getDocs(collection(db, "competitions"));
+            const portfolios = {};
             for (const compDoc of compQuery.docs) {
                 const portfolioDocRef = doc(db, `competitions/${compDoc.id}/participants`, user.uid);
                 const portfolioSnap = await getDoc(portfolioDocRef);
@@ -140,14 +145,26 @@ const LobbyPage = ({ user, onSelectCompetition, onGoToAdmin }) => {
             }
             setUserPortfolios(portfolios);
         };
-        fetchPortfolios();
+        
+        if (user.uid) {
+            fetchPortfolios();
+        }
 
         return () => unsubscribeComps();
     }, [user.uid]);
     
     const handleJoinCompetition = async (competition) => {
         const portfolioDocRef = doc(db, `competitions/${competition.id}/participants`, user.uid);
-        const initialPortfolio = { cash: competition.initialCash, stocks: {} };
+        const userDocRef = doc(db, 'users', user.uid);
+        const userDoc = await getDoc(userDocRef);
+        const username = userDoc.exists() ? userDoc.data().username : 'Anonymous';
+
+        const initialPortfolio = { 
+            cash: competition.initialCash, 
+            stocks: {},
+            userId: user.uid,
+            username: username
+        };
         await setDoc(portfolioDocRef, initialPortfolio);
         onSelectCompetition(competition.id);
     };
@@ -155,8 +172,9 @@ const LobbyPage = ({ user, onSelectCompetition, onGoToAdmin }) => {
     return (
         <div className="min-h-screen bg-gray-900 text-white p-4 sm:p-6 lg:p-8">
             <header className="max-w-5xl mx-auto flex justify-between items-center mb-8">
-                <div><h1 className="text-3xl font-bold">Welcome, {user.username || 'Player'}!</h1><p className="text-gray-400">Choose a competition to join.</p></div>
-                <div>
+                <div><h1 className="text-3xl font-bold">Welcome, {user.username || 'Player'}!</h1><p className="text-gray-400">Choose a competition to join or create your own.</p></div>
+                <div className="flex items-center">
+                    <button onClick={onGoToCreate} className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md transition mr-4">Create Competition</button>
                     {user.role === 'admin' && (
                         <button onClick={onGoToAdmin} className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-md transition mr-4">Admin Panel</button>
                     )}
@@ -170,14 +188,18 @@ const LobbyPage = ({ user, onSelectCompetition, onGoToAdmin }) => {
                             {competitions.map(comp => (
                                 <div key={comp.id} className="bg-gray-800 rounded-lg p-6 flex flex-col justify-between border border-gray-700 hover:border-indigo-500 transition-all">
                                     <div>
-                                        <h2 className="text-2xl font-bold text-indigo-400">{comp.name}</h2>
+                                        <div className="flex justify-between items-start">
+                                            <h2 className="text-2xl font-bold text-indigo-400">{comp.name}</h2>
+                                            {!comp.isPublic && <span className="text-xs bg-yellow-600 text-white px-2 py-1 rounded-full flex-shrink-0">Private</span>}
+                                        </div>
                                         <p className="text-gray-400 mt-2 mb-4">{comp.description}</p>
+                                        <p className="text-sm text-gray-500">Created by: {comp.ownerName || 'Admin'}</p>
                                         <p className="text-sm text-gray-500">Starts: {formatDate(comp.startDate)}</p>
                                         <p className="text-sm text-gray-500">Ends: {formatDate(comp.endDate)}</p>
                                         <p className="text-lg font-semibold mt-3">Starting Cash: {formatCurrency(comp.initialCash)}</p>
                                     </div>
                                     {userPortfolios[comp.id] ? (
-                                        <button onClick={() => onSelectCompetition(comp.id)} className="mt-6 w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md transition">View Competition</button>
+                                        <button onClick={() => onSelectCompetition(comp.id)} className="mt-6 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md transition">View Competition</button>
                                     ) : (
                                         <button onClick={() => handleJoinCompetition(comp)} className="mt-6 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md transition">Join Competition</button>
                                     )}
@@ -186,8 +208,8 @@ const LobbyPage = ({ user, onSelectCompetition, onGoToAdmin }) => {
                         </div>
                     ) : (
                         <div className="text-center bg-gray-800 p-8 rounded-lg">
-                            <h2 className="text-2xl font-bold text-white">No Competitions Found</h2>
-                            <p className="text-gray-400 mt-2">The admin has not created any competitions yet. Please check back later.</p>
+                            <h2 className="text-2xl font-bold text-white">No Public Competitions Found</h2>
+                            <p className="text-gray-400 mt-2">No one has created any public competitions yet. Why don't you be the first?</p>
                         </div>
                     )
                 )}
@@ -197,6 +219,8 @@ const LobbyPage = ({ user, onSelectCompetition, onGoToAdmin }) => {
 };
 
 const CompetitionPage = ({ user, competitionId, onExit }) => {
+    // This component remains largely the same for now
+    // Future step: Implement the leaderboard here
     const [competition, setCompetition] = useState(null);
     const [portfolio, setPortfolio] = useState(null);
     const [stockData, setStockData] = useState({});
@@ -210,9 +234,11 @@ const CompetitionPage = ({ user, competitionId, onExit }) => {
                 const compData = docSnap.data();
                 setCompetition(compData);
                 const initialPrices = {};
-                Object.keys(compData.tradableAssets).forEach(symbol => {
-                    initialPrices[symbol] = { price: compData.tradableAssets[symbol], history: [compData.tradableAssets[symbol]] };
-                });
+                if (compData.tradableAssets) {
+                    Object.keys(compData.tradableAssets).forEach(symbol => {
+                        initialPrices[symbol] = { price: compData.tradableAssets[symbol], history: [compData.tradableAssets[symbol]] };
+                    });
+                }
                 setStockData(initialPrices);
             }
         });
@@ -264,40 +290,6 @@ const CompetitionPage = ({ user, competitionId, onExit }) => {
         const portfolioDocRef = doc(db, `competitions/${competitionId}/participants`, user.uid);
         await setDoc(portfolioDocRef, newPortfolio);
     };
-    
-    const getAiAnalysis = async (symbol) => {
-        setModalState({ title: `✨ AI Analysis for ${symbol}`, content: '', isLoading: true });
-        const stock = stockData[symbol];
-        const prompt = `You are a witty but insightful stock market analyst for a fun trading game. The stock is ${symbol}. Its recent simulated price history is: ${stock.history.map(p => formatCurrency(p)).join(', ')}. Provide a short, creative, and slightly humorous analysis (2-3 sentences) about its potential future performance. Do not give financial advice.`;
-        try {
-            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=`, {
-                method: 'POST', 
-                headers: { 'Content-Type': 'application/json' }, 
-                body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] })
-            });
-            const result = await response.json();
-            setModalState({ title: `✨ AI Analysis for ${symbol}`, content: result.candidates[0].content.parts[0].text, isLoading: false });
-        } catch (err) {
-            setModalState({ title: `✨ AI Analysis for ${symbol}`, content: "The AI analyst is on a coffee break. Please try again later.", isLoading: false });
-        }
-    };
-
-    const getAiPortfolioAdvice = async () => {
-        setModalState({ title: `✨ AI Portfolio Advisor`, content: '', isLoading: true });
-        const holdings = Object.entries(portfolio.stocks).map(([symbol, data]) => `${data.quantity} shares of ${symbol}`).join(', ');
-        const prompt = `You are a helpful and creative portfolio advisor for a stock trading game. My current portfolio has ${formatCurrency(portfolio.cash)} in cash and the following stocks: ${holdings || 'none'}. Based on this, provide one actionable, creative, and fun suggestion for my next move. This is for a game, so be imaginative. Do not give real financial advice. Keep it to 2-4 sentences.`;
-        try {
-            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=`, {
-                method: 'POST', 
-                headers: { 'Content-Type': 'application/json' }, 
-                body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] })
-            });
-            const result = await response.json();
-            setModalState({ title: `✨ AI Portfolio Advisor`, content: result.candidates[0].content.parts[0].text, isLoading: false });
-        } catch (err) {
-            setModalState({ title: `✨ AI Portfolio Advisor`, content: "The AI advisor is currently crunching numbers. Please try again later.", isLoading: false });
-        }
-    };
 
     if (!competition || !portfolio) {
         return <div className="bg-gray-900 min-h-screen flex items-center justify-center text-white"><p>Loading Competition...</p></div>;
@@ -308,7 +300,6 @@ const CompetitionPage = ({ user, competitionId, onExit }) => {
 
     return (
         <div className="min-h-screen bg-gray-900 text-white p-4 sm:p-6 lg:p-8">
-            <AiModal title={modalState.title} content={modalState.content} isLoading={modalState.isLoading} onClose={() => setModalState({ title: null })} />
             <header className="max-w-7xl mx-auto mb-8">
                 <div className="flex justify-between items-center">
                     <h1 className="text-4xl font-bold text-indigo-400">{competition.name}</h1>
@@ -318,7 +309,7 @@ const CompetitionPage = ({ user, competitionId, onExit }) => {
             <main className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <div className="lg:col-span-2">
                     <div className="bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
-                         <div className="flex justify-between items-start mb-4"><h2 className="text-2xl font-bold">My Portfolio</h2><button onClick={getAiPortfolioAdvice} className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-3 rounded-md transition -mt-1">✨ Get AI Advice</button></div>
+                         <div className="flex justify-between items-start mb-4"><h2 className="text-2xl font-bold">My Portfolio</h2></div>
                          <div className="grid grid-cols-3 gap-4 text-center">
                             <div><p className="text-gray-400 text-sm">Cash</p><p className="text-2xl font-semibold text-green-400">{formatCurrency(portfolio.cash)}</p></div>
                             <div><p className="text-gray-400 text-sm">Stocks</p><p className="text-2xl font-semibold text-blue-400">{formatCurrency(portfolioValue)}</p></div>
@@ -327,7 +318,7 @@ const CompetitionPage = ({ user, competitionId, onExit }) => {
                          <div className="mt-4 border-t border-gray-700 pt-4">
                              <h3 className="font-bold text-lg mb-2">My Holdings</h3>
                              {Object.keys(portfolio.stocks).length > 0 ? Object.entries(portfolio.stocks).map(([symbol, data]) => (
-                                <div key={symbol} className="flex justify-between items-center bg-gray-900 p-2 rounded-md">
+                                <div key={symbol} className="flex justify-between items-center bg-gray-900 p-2 rounded-md mb-2">
                                     <span>{data.quantity} x {symbol}</span>
                                     <span>{formatCurrency(data.quantity * (stockData[symbol]?.price || 0))}</span>
                                 </div>
@@ -337,7 +328,7 @@ const CompetitionPage = ({ user, competitionId, onExit }) => {
                     {error && <div className="bg-red-500 text-white p-3 rounded-md mb-4 text-center">{error}</div>}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         {Object.entries(stockData).map(([symbol, data]) => (
-                            <Stock key={symbol} symbol={symbol} data={data} portfolio={portfolio} onTrade={handleTrade} onAnalyze={getAiAnalysis} />
+                            <Stock key={symbol} symbol={symbol} data={data} portfolio={portfolio} onTrade={handleTrade} />
                         ))}
                     </div>
                 </div>
@@ -352,18 +343,17 @@ const CompetitionPage = ({ user, competitionId, onExit }) => {
     );
 };
 
-const Stock = ({ symbol, data, portfolio, onTrade, onAnalyze }) => {
+const Stock = ({ symbol, data, portfolio, onTrade }) => {
     const [quantity, setQuantity] = useState(1);
     const sharesOwned = portfolio?.stocks?.[symbol]?.quantity || 0;
     return (
-        <div className="bg-gray-800 p-4 rounded-lg shadow-md flex flex-col justify-between">
+        <div className="bg-gray-800 p-4 rounded-lg shadow-md flex flex-col justify-between border border-gray-700">
             <div>
                 <h3 className="text-xl font-bold">{symbol}</h3>
                 <p className="text-2xl font-light text-green-400">{formatCurrency(data.price)}</p>
                 {sharesOwned > 0 && <p className="text-sm text-yellow-400 mt-1">Owned: {sharesOwned}</p>}
             </div>
             <div className="mt-4 flex flex-col space-y-2">
-                <button onClick={() => onAnalyze(symbol)} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md transition">✨ Analyze</button>
                 <div className="flex items-center space-x-2">
                     <input type="number" value={quantity} onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))} className="w-20 bg-gray-900 text-white p-2 rounded-md border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500" min="1" />
                     <button onClick={() => onTrade(symbol, quantity, 'buy')} className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md transition">Buy</button>
@@ -374,22 +364,15 @@ const Stock = ({ symbol, data, portfolio, onTrade, onAnalyze }) => {
     );
 };
 
-const AdminPage = ({ onExit }) => {
-    const [competitions, setCompetitions] = useState([]);
+// NEW Component for users to create competitions
+const CreateCompetitionPage = ({ user, onExit }) => {
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
     const [initialCash, setInitialCash] = useState(100000);
     const [assets, setAssets] = useState('AAPL,GOOGL,MSFT');
+    const [isPublic, setIsPublic] = useState(true);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
-
-    useEffect(() => {
-        const q = query(collection(db, "competitions"));
-        const unsubscribe = onSnapshot(q, (querySnapshot) => {
-            setCompetitions(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-        });
-        return () => unsubscribe();
-    }, []);
 
     const handleCreateCompetition = async (e) => {
         e.preventDefault();
@@ -398,11 +381,23 @@ const AdminPage = ({ onExit }) => {
         try {
             const tradableAssets = assets.split(',').reduce((acc, symbol) => {
                 const trimmedSymbol = symbol.trim().toUpperCase();
-                if (trimmedSymbol) { acc[trimmedSymbol] = 100; }
+                if (trimmedSymbol) { acc[trimmedSymbol] = Math.floor(Math.random() * 200) + 50; } // Random starting price
                 return acc;
             }, {});
-            await addDoc(collection(db, 'competitions'), { name, description, initialCash: Number(initialCash), startDate: Timestamp.now(), endDate: Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)), tradableAssets });
-            setName(''); setDescription(''); setInitialCash(100000); setAssets('AAPL,GOOGL,MSFT');
+            
+            await addDoc(collection(db, 'competitions'), { 
+                name, 
+                description, 
+                initialCash: Number(initialCash), 
+                startDate: Timestamp.now(), 
+                endDate: Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)), // 30 days from now
+                tradableAssets,
+                isPublic,
+                ownerId: user.uid,
+                ownerName: user.username
+            });
+            
+            onExit(); // Go back to lobby after creation
         } catch (err) {
             setError(err.message);
         }
@@ -411,28 +406,67 @@ const AdminPage = ({ onExit }) => {
 
     return (
         <div className="min-h-screen bg-gray-900 text-white p-4 sm:p-6 lg:p-8">
+            <header className="max-w-3xl mx-auto flex justify-between items-center mb-8">
+                <h1 className="text-3xl font-bold text-green-400">Create Your Competition</h1>
+                <button onClick={onExit} className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-md transition">&larr; Back to Lobby</button>
+            </header>
+            <main className="max-w-3xl mx-auto">
+                <div className="bg-gray-800 p-6 rounded-lg border border-gray-700">
+                    <form onSubmit={handleCreateCompetition}>
+                        <div className="mb-4"><label className="block text-gray-400 mb-2">Competition Name</label><input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full bg-gray-900 p-2 rounded border border-gray-600" required /></div>
+                        <div className="mb-4"><label className="block text-gray-400 mb-2">Description</label><textarea value={description} onChange={e => setDescription(e.target.value)} className="w-full bg-gray-900 p-2 rounded border border-gray-600" required /></div>
+                        <div className="mb-4"><label className="block text-gray-400 mb-2">Starting Cash</label><input type="number" value={initialCash} onChange={e => setInitialCash(e.target.value)} className="w-full bg-gray-900 p-2 rounded border border-gray-600" required /></div>
+                        <div className="mb-4"><label className="block text-gray-400 mb-2">Tradable Assets (comma-separated)</label><input type="text" value={assets} onChange={e => setAssets(e.target.value)} className="w-full bg-gray-900 p-2 rounded border border-gray-600" placeholder="e.g., AAPL, GOOGL, TSLA" required /></div>
+                        <div className="mb-6 flex items-center justify-between bg-gray-900 p-3 rounded-md">
+                            <div>
+                                <label className="block text-gray-300">Public Competition</label>
+                                <p className="text-xs text-gray-500">Anyone can see and join this competition.</p>
+                            </div>
+                            <label className="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" checked={isPublic} onChange={() => setIsPublic(!isPublic)} className="sr-only peer" />
+                                <div className="w-11 h-6 bg-gray-600 rounded-full peer peer-focus:ring-4 peer-focus:ring-green-800 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
+                            </label>
+                        </div>
+                        {error && <p className="text-red-500 mb-4">{error}</p>}
+                        <button type="submit" className="w-full bg-green-600 hover:bg-green-700 font-bold py-3 rounded-md" disabled={loading}>{loading ? 'Creating...' : 'Create Competition'}</button>
+                    </form>
+                </div>
+            </main>
+        </div>
+    );
+};
+
+const AdminPage = ({ onExit }) => {
+    const [competitions, setCompetitions] = useState([]);
+    // This component remains for admin-specific tasks.
+    // For now, it just lists competitions.
+    useEffect(() => {
+        const q = query(collection(db, "competitions"));
+        const unsubscribe = onSnapshot(q, (querySnapshot) => {
+            setCompetitions(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        });
+        return () => unsubscribe();
+    }, []);
+
+    return (
+        <div className="min-h-screen bg-gray-900 text-white p-4 sm:p-6 lg:p-8">
             <header className="max-w-5xl mx-auto flex justify-between items-center mb-8">
                 <h1 className="text-3xl font-bold text-purple-400">Admin Panel</h1>
                 <button onClick={onExit} className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-md transition">&larr; Back to Lobby</button>
             </header>
-            <main className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div className="bg-gray-800 p-6 rounded-lg">
-                    <h2 className="text-2xl font-bold mb-4">Create New Competition</h2>
-                    <form onSubmit={handleCreateCompetition}>
-                        <div className="mb-4"><label className="block text-gray-400 mb-2">Name</label><input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full bg-gray-900 p-2 rounded" required /></div>
-                        <div className="mb-4"><label className="block text-gray-400 mb-2">Description</label><textarea value={description} onChange={e => setDescription(e.target.value)} className="w-full bg-gray-900 p-2 rounded" required /></div>
-                        <div className="mb-4"><label className="block text-gray-400 mb-2">Initial Cash</label><input type="number" value={initialCash} onChange={e => setInitialCash(e.target.value)} className="w-full bg-gray-900 p-2 rounded" required /></div>
-                        <div className="mb-4"><label className="block text-gray-400 mb-2">Tradable Assets (comma-separated)</label><input type="text" value={assets} onChange={e => setAssets(e.target.value)} className="w-full bg-gray-900 p-2 rounded" placeholder="e.g., AAPL, GOOGL, TSLA" required /></div>
-                        {error && <p className="text-red-500 mb-4">{error}</p>}
-                        <button type="submit" className="w-full bg-purple-600 hover:bg-purple-700 font-bold py-2 rounded" disabled={loading}>{loading ? 'Creating...' : 'Create Competition'}</button>
-                    </form>
-                </div>
+            <main className="max-w-5xl mx-auto">
                 <div className="bg-gray-800 p-6 rounded-lg">
                     <h2 className="text-2xl font-bold mb-4">Existing Competitions</h2>
                     <div className="space-y-3">
-                        {competitions.map(comp => <div key={comp.id} className="bg-gray-900 p-3 rounded">{comp.name}</div>)}
+                        {competitions.length > 0 ? competitions.map(comp => 
+                            <div key={comp.id} className="bg-gray-900 p-3 rounded flex justify-between">
+                                <span>{comp.name}</span>
+                                <span className="text-gray-400">by {comp.ownerName || 'N/A'}</span>
+                            </div>
+                        ) : <p>No competitions yet.</p>}
                     </div>
                 </div>
+                {/* Future admin actions like 'delete competition' or 'view all users' can go here */}
             </main>
         </div>
     );
@@ -448,7 +482,12 @@ const App = () => {
             if (userAuth) {
                 const userDocRef = doc(db, 'users', userAuth.uid);
                 const docSnap = await getDoc(userDocRef);
-                setUser(docSnap.exists() ? { uid: userAuth.uid, ...docSnap.data() } : { uid: userAuth.uid, email: userAuth.email });
+                if (docSnap.exists()) {
+                    setUser({ uid: userAuth.uid, ...docSnap.data() });
+                } else {
+                    // Handle case where user exists in Auth but not in Firestore
+                    setUser({ uid: userAuth.uid, email: userAuth.email, username: 'Player' });
+                }
             } else {
                 setUser(null);
             }
@@ -468,10 +507,17 @@ const App = () => {
     switch (page.name) {
         case 'admin':
             return <AdminPage onExit={() => setPage({ name: 'lobby' })} />;
+        case 'create-competition':
+             return <CreateCompetitionPage user={user} onExit={() => setPage({ name: 'lobby' })} />;
         case 'competition':
             return <CompetitionPage user={user} competitionId={page.competitionId} onExit={() => setPage({ name: 'lobby' })} />;
         default:
-            return <LobbyPage user={user} onSelectCompetition={(id) => setPage({ name: 'competition', competitionId: id })} onGoToAdmin={() => setPage({ name: 'admin' })} />;
+            return <LobbyPage 
+                        user={user} 
+                        onSelectCompetition={(id) => setPage({ name: 'competition', competitionId: id })} 
+                        onGoToAdmin={() => setPage({ name: 'admin' })}
+                        onGoToCreate={() => setPage({ name: 'create-competition' })}
+                    />;
     }
 };
 
