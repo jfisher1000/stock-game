@@ -17,15 +17,13 @@ import {
     onSnapshot,
     Timestamp,
     addDoc,
-    getDocs
+    getDocs,
+    where,
+    writeBatch
 } from 'firebase/firestore';
 
 // --- Firebase Configuration ---
 // SECURE SETUP: Your Firebase config should be in a .env file in your project's root.
-// Create a file named .env and add your config like this:
-// REACT_APP_API_KEY=AIzaSy...
-// REACT_APP_AUTH_DOMAIN=your-project.firebaseapp.com
-// ...and so on for all the keys.
 const firebaseConfig = {
   apiKey: process.env.REACT_APP_API_KEY,
   authDomain: process.env.REACT_APP_AUTH_DOMAIN,
@@ -48,6 +46,21 @@ const formatDate = (firebaseTimestamp) => {
 };
 
 const formatCurrency = (amount) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+
+const LockIcon = ({ isPublic }) => {
+    return isPublic ? (
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 9.9-1"></path>
+        </svg>
+    ) : (
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-yellow-400">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+        </svg>
+    );
+};
+
 
 // --- Page Components ---
 
@@ -99,12 +112,26 @@ const LobbyPage = ({ user, onSelectCompetition, onGoToAdmin, onGoToCreate }) => 
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const q = query(collection(db, "competitions"));
-        const unsubscribeComps = onSnapshot(q, (querySnapshot) => {
-            const comps = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setCompetitions(comps.filter(c => c.isPublic));
+        if (!user.uid) return;
+        
+        const publicQuery = query(collection(db, "competitions"), where("isPublic", "==", true));
+        const privateQuery = query(collection(db, "competitions"), where("ownerId", "==", user.uid), where("isPublic", "==", false));
+
+        const fetchCompetitions = async () => {
+            setLoading(true);
+            const [publicSnapshot, privateSnapshot] = await Promise.all([getDocs(publicQuery), getDocs(privateQuery)]);
+            
+            const publicComps = publicSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const privateComps = privateSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            
+            const allComps = [...publicComps, ...privateComps];
+            const uniqueComps = Array.from(new Set(allComps.map(c => c.id))).map(id => allComps.find(c => c.id === id));
+
+            setCompetitions(uniqueComps);
             setLoading(false);
-        }, (error) => { console.error("Error fetching competitions: ", error); setLoading(false); });
+        };
+
+        fetchCompetitions();
 
         const fetchPortfolios = async () => {
             const compQuery = await getDocs(collection(db, "competitions"));
@@ -119,11 +146,7 @@ const LobbyPage = ({ user, onSelectCompetition, onGoToAdmin, onGoToCreate }) => 
             setUserPortfolios(portfolios);
         };
         
-        if (user.uid) {
-            fetchPortfolios();
-        }
-
-        return () => unsubscribeComps();
+        fetchPortfolios();
     }, [user.uid]);
     
     const handleJoinCompetition = async (competition) => {
@@ -161,9 +184,11 @@ const LobbyPage = ({ user, onSelectCompetition, onGoToAdmin, onGoToCreate }) => 
                             {competitions.map(comp => (
                                 <div key={comp.id} className="bg-gray-800 rounded-lg p-6 flex flex-col justify-between border border-gray-700 hover:border-indigo-500 transition-all">
                                     <div>
-                                        <div className="flex justify-between items-start">
-                                            <h2 className="text-2xl font-bold text-indigo-400">{comp.name}</h2>
-                                            {!comp.isPublic && <span className="text-xs bg-yellow-600 text-white px-2 py-1 rounded-full flex-shrink-0">Private</span>}
+                                        <div className="flex justify-between items-center mb-2">
+                                            <h2 className="text-2xl font-bold text-indigo-400 flex items-center gap-2">
+                                                <LockIcon isPublic={comp.isPublic} />
+                                                {comp.name}
+                                            </h2>
                                         </div>
                                         <p className="text-gray-400 mt-2 mb-4">{comp.description}</p>
                                         <p className="text-sm text-gray-500">Created by: {comp.ownerName || 'Admin'}</p>
@@ -198,7 +223,6 @@ const CompetitionPage = ({ user, competitionId, onExit }) => {
     const [leaderboard, setLeaderboard] = useState([]);
     const [error, setError] = useState('');
 
-    // Effect for competition and user portfolio data
     useEffect(() => {
         const compDocRef = doc(db, 'competitions', competitionId);
         const unsubscribeComp = onSnapshot(compDocRef, (docSnap) => {
@@ -226,7 +250,6 @@ const CompetitionPage = ({ user, competitionId, onExit }) => {
         };
     }, [competitionId, user.uid]);
 
-    // Effect for simulating stock price changes
     useEffect(() => {
         if (!competition) return;
         const interval = setInterval(() => {
@@ -243,7 +266,6 @@ const CompetitionPage = ({ user, competitionId, onExit }) => {
         return () => clearInterval(interval);
     }, [competition]);
 
-    // Effect for calculating leaderboard
     useEffect(() => {
         if (!competitionId || Object.keys(stockData).length === 0) return;
 
@@ -295,7 +317,7 @@ const CompetitionPage = ({ user, competitionId, onExit }) => {
     };
 
     if (!competition || !portfolio) {
-        return <div className="bg-gray-900 min-h-screen flex items-center justify-center text-white"><p>Loading Competition...</p></div>;
+        return <div className="min-h-screen bg-gray-900 flex items-center justify-center text-white"><p>Loading Competition...</p></div>;
     }
 
     const portfolioValue = Object.entries(portfolio.stocks).reduce((total, [symbol, stock]) => total + (stock.quantity * (stockData[symbol]?.price || 0)), 0);
@@ -393,35 +415,66 @@ const CreateCompetitionPage = ({ user, onExit }) => {
     const [isPublic, setIsPublic] = useState(true);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    
+    const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+    const [duration, setDuration] = useState('30');
 
     const handleCreateCompetition = async (e) => {
         e.preventDefault();
         setLoading(true);
         setError('');
+
         try {
+            const finalStartDate = new Date(startDate);
+            const finalEndDate = new Date(finalStartDate);
+            finalEndDate.setDate(finalEndDate.getDate() + parseInt(duration));
+
+            if (finalEndDate <= finalStartDate) {
+                setError("End date must be after the start date.");
+                setLoading(false);
+                return;
+            }
+
             const tradableAssets = assets.split(',').reduce((acc, symbol) => {
                 const trimmedSymbol = symbol.trim().toUpperCase();
-                if (trimmedSymbol) { acc[trimmedSymbol] = Math.floor(Math.random() * 200) + 50; } // Random starting price
+                if (trimmedSymbol) { acc[trimmedSymbol] = Math.floor(Math.random() * 200) + 50; }
                 return acc;
             }, {});
-            
-            await addDoc(collection(db, 'competitions'), { 
+
+            // Use a batch write to create the competition and join the owner simultaneously
+            const batch = writeBatch(db);
+
+            // 1. Create the competition document
+            const newCompRef = doc(collection(db, 'competitions'));
+            batch.set(newCompRef, { 
                 name, 
                 description, 
                 initialCash: Number(initialCash), 
-                startDate: Timestamp.now(), 
-                endDate: Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)), // 30 days from now
+                startDate: Timestamp.fromDate(finalStartDate), 
+                endDate: Timestamp.fromDate(finalEndDate),
                 tradableAssets,
                 isPublic,
                 ownerId: user.uid,
                 ownerName: user.username
             });
+
+            // 2. Create the participant document for the owner
+            const participantRef = doc(db, 'competitions', newCompRef.id, 'participants', user.uid);
+            batch.set(participantRef, {
+                cash: Number(initialCash),
+                stocks: {},
+                userId: user.uid,
+                username: user.username
+            });
+
+            // 3. Commit the batch
+            await batch.commit();
             
             onExit(); 
         } catch (err) {
             setError(err.message);
+            setLoading(false);
         }
-        setLoading(false);
     };
 
     return (
@@ -435,6 +488,20 @@ const CreateCompetitionPage = ({ user, onExit }) => {
                     <form onSubmit={handleCreateCompetition}>
                         <div className="mb-4"><label className="block text-gray-400 mb-2">Competition Name</label><input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full bg-gray-900 p-2 rounded border border-gray-600" required /></div>
                         <div className="mb-4"><label className="block text-gray-400 mb-2">Description</label><textarea value={description} onChange={e => setDescription(e.target.value)} className="w-full bg-gray-900 p-2 rounded border border-gray-600" required /></div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                            <div><label className="block text-gray-400 mb-2">Start Date</label><input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full bg-gray-900 p-2 rounded border border-gray-600" required /></div>
+                            <div><label className="block text-gray-400 mb-2">Duration</label>
+                                <select value={duration} onChange={e => setDuration(e.target.value)} className="w-full bg-gray-900 p-2 rounded border border-gray-600">
+                                    <option value="7">1 Week</option>
+                                    <option value="14">2 Weeks</option>
+                                    <option value="30">1 Month</option>
+                                    <option value="60">2 Months</option>
+                                    <option value="90">3 Months</option>
+                                    <option value="180">6 Months</option>
+                                    <option value="365">1 Year</option>
+                                </select>
+                            </div>
+                        </div>
                         <div className="mb-4"><label className="block text-gray-400 mb-2">Starting Cash</label><input type="number" value={initialCash} onChange={e => setInitialCash(e.target.value)} className="w-full bg-gray-900 p-2 rounded border border-gray-600" required /></div>
                         <div className="mb-4"><label className="block text-gray-400 mb-2">Tradable Assets (comma-separated)</label><input type="text" value={assets} onChange={e => setAssets(e.target.value)} className="w-full bg-gray-900 p-2 rounded border border-gray-600" placeholder="e.g., AAPL, GOOGL, TSLA" required /></div>
                         <div className="mb-6 flex items-center justify-between bg-gray-900 p-3 rounded-md">
