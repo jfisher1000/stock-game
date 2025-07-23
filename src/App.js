@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
 import { 
     getAuth, 
@@ -41,38 +41,13 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// --- Helper & AI Components ---
+// --- Helper Components ---
 const formatDate = (firebaseTimestamp) => {
     if (!firebaseTimestamp) return 'N/A';
     return firebaseTimestamp.toDate().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 };
 
 const formatCurrency = (amount) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
-
-const AiModal = ({ title, content, isLoading, onClose }) => {
-    if (!title) return null;
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
-            <div className="bg-gray-800 rounded-xl shadow-2xl max-w-lg w-full border border-indigo-500/50">
-                <div className="p-6">
-                    <div className="flex justify-between items-center mb-4">
-                        <h3 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-500">{title}</h3>
-                        <button onClick={onClose} className="text-gray-400 hover:text-white">&times;</button>
-                    </div>
-                    {isLoading ? (
-                        <div className="flex items-center justify-center h-32">
-                            <svg className="animate-spin h-8 w-8 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                            <p className="ml-3 text-gray-300">Thinking...</p>
-                        </div>
-                    ) : (
-                        <p className="text-gray-300 whitespace-pre-wrap">{content}</p>
-                    )}
-                </div>
-                <div className="bg-gray-900/50 px-6 py-3 text-xs text-gray-500 rounded-b-xl">Disclaimer: AI-generated content is for entertainment purposes only.</div>
-            </div>
-        </div>
-    );
-};
 
 // --- Page Components ---
 
@@ -95,7 +70,6 @@ const AuthPage = () => {
             try {
                 const userCredential = await createUserWithEmailAndPassword(auth, email, password);
                 const userDocRef = doc(db, `users`, userCredential.user.uid);
-                // You can add a 'role: "player"' field here if you want to explicitly define roles
                 await setDoc(userDocRef, { username: username, email: userCredential.user.email, createdAt: Timestamp.now(), role: 'player' });
             } catch (err) { setError(err.message); setLoading(false); }
         }
@@ -125,11 +99,10 @@ const LobbyPage = ({ user, onSelectCompetition, onGoToAdmin, onGoToCreate }) => 
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        // Query for public competitions or private ones the user owns or is invited to (future enhancement)
         const q = query(collection(db, "competitions"));
         const unsubscribeComps = onSnapshot(q, (querySnapshot) => {
             const comps = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setCompetitions(comps.filter(c => c.isPublic)); // For now, only show public competitions
+            setCompetitions(comps.filter(c => c.isPublic));
             setLoading(false);
         }, (error) => { console.error("Error fetching competitions: ", error); setLoading(false); });
 
@@ -219,14 +192,13 @@ const LobbyPage = ({ user, onSelectCompetition, onGoToAdmin, onGoToCreate }) => 
 };
 
 const CompetitionPage = ({ user, competitionId, onExit }) => {
-    // This component remains largely the same for now
-    // Future step: Implement the leaderboard here
     const [competition, setCompetition] = useState(null);
     const [portfolio, setPortfolio] = useState(null);
     const [stockData, setStockData] = useState({});
-    const [modalState, setModalState] = useState({ title: null, content: '', isLoading: false });
+    const [leaderboard, setLeaderboard] = useState([]);
     const [error, setError] = useState('');
 
+    // Effect for competition and user portfolio data
     useEffect(() => {
         const compDocRef = doc(db, 'competitions', competitionId);
         const unsubscribeComp = onSnapshot(compDocRef, (docSnap) => {
@@ -248,9 +220,13 @@ const CompetitionPage = ({ user, competitionId, onExit }) => {
             setPortfolio(docSnap.data());
         });
 
-        return () => { unsubscribeComp(); unsubscribePortfolio(); };
+        return () => { 
+            unsubscribeComp(); 
+            unsubscribePortfolio();
+        };
     }, [competitionId, user.uid]);
 
+    // Effect for simulating stock price changes
     useEffect(() => {
         if (!competition) return;
         const interval = setInterval(() => {
@@ -259,14 +235,41 @@ const CompetitionPage = ({ user, competitionId, onExit }) => {
                 Object.keys(newData).forEach(symbol => {
                     const changePercent = (Math.random() - 0.49) * 0.05;
                     const newPrice = newData[symbol].price * (1 + changePercent);
-                    const newHistory = [...(newData[symbol].history || []), newPrice].slice(-10);
-                    newData[symbol] = { ...newData[symbol], price: Math.max(0.01, newPrice), history: newHistory };
+                    newData[symbol] = { ...newData[symbol], price: Math.max(0.01, newPrice) };
                 });
                 return newData;
             });
         }, 3000);
         return () => clearInterval(interval);
     }, [competition]);
+
+    // Effect for calculating leaderboard
+    useEffect(() => {
+        if (!competitionId || Object.keys(stockData).length === 0) return;
+
+        const participantsColRef = collection(db, `competitions/${competitionId}/participants`);
+        const unsubscribeLeaderboard = onSnapshot(participantsColRef, (snapshot) => {
+            const participants = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            
+            const calculatedLeaderboard = participants.map(p => {
+                const portfolioValue = Object.entries(p.stocks || {}).reduce((total, [symbol, stock]) => {
+                    return total + (stock.quantity * (stockData[symbol]?.price || 0));
+                }, 0);
+                const totalValue = p.cash + portfolioValue;
+                return {
+                    userId: p.userId,
+                    username: p.username,
+                    totalValue: totalValue
+                };
+            });
+
+            calculatedLeaderboard.sort((a, b) => b.totalValue - a.totalValue);
+            setLeaderboard(calculatedLeaderboard);
+        });
+
+        return () => unsubscribeLeaderboard();
+
+    }, [competitionId, stockData]);
     
     const handleTrade = async (symbol, quantity, type) => {
         if (!portfolio) return;
@@ -288,7 +291,7 @@ const CompetitionPage = ({ user, competitionId, onExit }) => {
         }
         
         const portfolioDocRef = doc(db, `competitions/${competitionId}/participants`, user.uid);
-        await setDoc(portfolioDocRef, newPortfolio);
+        await setDoc(portfolioDocRef, newPortfolio, { merge: true });
     };
 
     if (!competition || !portfolio) {
@@ -309,11 +312,11 @@ const CompetitionPage = ({ user, competitionId, onExit }) => {
             <main className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <div className="lg:col-span-2">
                     <div className="bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
-                         <div className="flex justify-between items-start mb-4"><h2 className="text-2xl font-bold">My Portfolio</h2></div>
+                         <h2 className="text-2xl font-bold mb-4">My Portfolio</h2>
                          <div className="grid grid-cols-3 gap-4 text-center">
                             <div><p className="text-gray-400 text-sm">Cash</p><p className="text-2xl font-semibold text-green-400">{formatCurrency(portfolio.cash)}</p></div>
                             <div><p className="text-gray-400 text-sm">Stocks</p><p className="text-2xl font-semibold text-blue-400">{formatCurrency(portfolioValue)}</p></div>
-                            <div><p className="text-gray-400 text-sm">Total</p><p className="text-2xl font-bold text-yellow-400">{formatCurrency(totalValue)}</p></div>
+                            <div><p className="text-2xl font-bold text-yellow-400">Total</p><p className="text-2xl font-bold text-yellow-400">{formatCurrency(totalValue)}</p></div>
                          </div>
                          <div className="mt-4 border-t border-gray-700 pt-4">
                              <h3 className="font-bold text-lg mb-2">My Holdings</h3>
@@ -332,10 +335,28 @@ const CompetitionPage = ({ user, competitionId, onExit }) => {
                         ))}
                     </div>
                 </div>
-                <aside>
+                <aside className="space-y-8">
+                    <div className="bg-gray-800 p-6 rounded-xl shadow-lg">
+                        <h2 className="text-2xl font-bold mb-4">Competition Details</h2>
+                        <div className="space-y-2 text-sm">
+                            <div className="flex justify-between"><span>Owner:</span> <span className="font-semibold text-gray-300">{competition.ownerName}</span></div>
+                            <div className="flex justify-between"><span>Starting Cash:</span> <span className="font-semibold text-gray-300">{formatCurrency(competition.initialCash)}</span></div>
+                            <div className="flex justify-between"><span>Ends:</span> <span className="font-semibold text-gray-300">{formatDate(competition.endDate)}</span></div>
+                        </div>
+                    </div>
                     <div className="bg-gray-800 p-6 rounded-xl shadow-lg">
                         <h2 className="text-2xl font-bold mb-4">Leaderboard</h2>
-                        <p className="text-gray-400">(Leaderboard coming soon)</p>
+                        <div className="space-y-3">
+                            {leaderboard.length > 0 ? leaderboard.map((player, index) => (
+                                <div key={player.userId} className={`flex justify-between items-center p-3 rounded-lg ${player.userId === user.uid ? 'bg-indigo-600' : 'bg-gray-900'}`}>
+                                    <div className="flex items-center">
+                                        <span className="text-lg font-bold w-8">{index + 1}</span>
+                                        <span className="font-semibold">{player.username}</span>
+                                    </div>
+                                    <span className="font-bold text-green-400">{formatCurrency(player.totalValue)}</span>
+                                </div>
+                            )) : <p className="text-gray-400">No players on the leaderboard yet.</p>}
+                        </div>
                     </div>
                 </aside>
             </main>
@@ -364,7 +385,6 @@ const Stock = ({ symbol, data, portfolio, onTrade }) => {
     );
 };
 
-// NEW Component for users to create competitions
 const CreateCompetitionPage = ({ user, onExit }) => {
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
@@ -397,7 +417,7 @@ const CreateCompetitionPage = ({ user, onExit }) => {
                 ownerName: user.username
             });
             
-            onExit(); // Go back to lobby after creation
+            onExit(); 
         } catch (err) {
             setError(err.message);
         }
@@ -438,8 +458,6 @@ const CreateCompetitionPage = ({ user, onExit }) => {
 
 const AdminPage = ({ onExit }) => {
     const [competitions, setCompetitions] = useState([]);
-    // This component remains for admin-specific tasks.
-    // For now, it just lists competitions.
     useEffect(() => {
         const q = query(collection(db, "competitions"));
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
@@ -466,7 +484,6 @@ const AdminPage = ({ onExit }) => {
                         ) : <p>No competitions yet.</p>}
                     </div>
                 </div>
-                {/* Future admin actions like 'delete competition' or 'view all users' can go here */}
             </main>
         </div>
     );
@@ -485,7 +502,6 @@ const App = () => {
                 if (docSnap.exists()) {
                     setUser({ uid: userAuth.uid, ...docSnap.data() });
                 } else {
-                    // Handle case where user exists in Auth but not in Firestore
                     setUser({ uid: userAuth.uid, email: userAuth.email, username: 'Player' });
                 }
             } else {
