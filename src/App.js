@@ -215,7 +215,7 @@ const Leaderboard = ({ competitionId }) => {
     );
 };
 
-const MyCompetitionsPage = ({ user }) => {
+const MyCompetitionsPage = ({ user, onSelectCompetition }) => {
     const [competitions, setCompetitions] = useState([]);
     const [loading, setLoading] = useState(true);
 
@@ -238,18 +238,16 @@ const MyCompetitionsPage = ({ user }) => {
                 <p>You haven't joined any competitions yet. Go to Explore to find one!</p>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {competitions.map(comp => <CompetitionCard key={comp.id} competition={comp} user={user} />)}
+                    {competitions.map(comp => <CompetitionCard key={comp.id} competition={comp} onClick={() => onSelectCompetition(comp.id)} />)}
                 </div>
             )}
         </div>
     );
 };
 
-const CompetitionCard = ({ competition, user }) => {
-    // This would ideally show more details, maybe a mini-leaderboard preview
-    // For now, it's a simple card.
+const CompetitionCard = ({ competition, onClick }) => {
     return (
-        <div className="glass-card p-6 rounded-lg">
+        <div className="glass-card p-6 rounded-lg cursor-pointer hover:border-primary/50 border border-transparent transition-all" onClick={onClick}>
             <div className="flex justify-between items-start">
                 <h3 className="text-xl font-bold">{competition.name}</h3>
                 {competition.isPublic ? <LockOpenIcon /> : <LockClosedIcon />}
@@ -258,7 +256,7 @@ const CompetitionCard = ({ competition, user }) => {
             <p className="text-gray-400">Starts with {formatCurrency(competition.startingCash)}</p>
             <div className="flex items-center mt-4 text-gray-400">
                 <UsersIcon />
-                <span className="ml-2">{competition.participantIds.length} players</span>
+                <span className="ml-2">{(competition.participantIds || []).length} players</span>
             </div>
         </div>
     );
@@ -278,14 +276,12 @@ const ExplorePage = ({ user }) => {
     }, []);
     
     const handleJoin = async (comp) => {
-        if (comp.participantIds.includes(user.uid)) {
+        if ((comp.participantIds || []).includes(user.uid)) {
             alert("You've already joined this competition!");
             return;
         }
 
         const batch = writeBatch(db);
-
-        // Add user to the participants subcollection
         const participantRef = doc(db, 'competitions', comp.id, 'participants', user.uid);
         batch.set(participantRef, {
             username: user.username,
@@ -294,10 +290,9 @@ const ExplorePage = ({ user }) => {
             joinedAt: serverTimestamp()
         });
         
-        // Add user's ID to the participantIds array in the main competition doc
         const competitionRef = doc(db, 'competitions', comp.id);
         batch.update(competitionRef, {
-            participantIds: [...comp.participantIds, user.uid]
+            participantIds: [...(comp.participantIds || []), user.uid]
         });
 
         try {
@@ -308,7 +303,6 @@ const ExplorePage = ({ user }) => {
             alert("Failed to join competition.");
         }
     };
-
 
     if (loading) return <p className="p-8 text-white">Loading public competitions...</p>;
 
@@ -324,18 +318,46 @@ const ExplorePage = ({ user }) => {
                             <p className="text-gray-400">Starts with {formatCurrency(comp.startingCash)}</p>
                             <div className="flex items-center mt-4 text-gray-400">
                                 <UsersIcon />
-                                <span className="ml-2">{comp.participantIds.length} players</span>
+                                <span className="ml-2">{(comp.participantIds || []).length} players</span>
                             </div>
                         </div>
                         <button 
                             onClick={() => handleJoin(comp)}
-                            disabled={comp.participantIds.includes(user.uid)}
+                            disabled={(comp.participantIds || []).includes(user.uid)}
                             className="mt-4 w-full bg-primary hover:opacity-90 text-white font-bold py-2 rounded-md transition duration-300 disabled:bg-gray-500 disabled:cursor-not-allowed">
-                            {comp.participantIds.includes(user.uid) ? 'Joined' : 'Join'}
+                            {(comp.participantIds || []).includes(user.uid) ? 'Joined' : 'Join'}
                         </button>
                     </div>
                 ))}
             </div>
+        </div>
+    );
+};
+
+const CompetitionDetailPage = ({ competitionId, onBack }) => {
+    const [competition, setCompetition] = useState(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const docRef = doc(db, 'competitions', competitionId);
+        const unsubscribe = onSnapshot(docRef, (doc) => {
+            if (doc.exists()) {
+                setCompetition({ id: doc.id, ...doc.data() });
+            }
+            setLoading(false);
+        });
+        return () => unsubscribe();
+    }, [competitionId]);
+
+    if (loading) return <p className="p-8 text-white">Loading competition details...</p>;
+    if (!competition) return <p className="p-8 text-white">Competition not found.</p>;
+
+    return (
+        <div className="p-8 text-white">
+            <button onClick={onBack} className="mb-6 text-primary hover:underline">{'< Back to My Competitions'}</button>
+            <h1 className="text-4xl font-bold">{competition.name}</h1>
+            <p className="text-gray-400 mt-2">Created by {competition.ownerName} on {formatDate(competition.createdAt)}</p>
+            <Leaderboard competitionId={competitionId} />
         </div>
     );
 };
@@ -357,7 +379,6 @@ const SideBar = ({ user, activeTab, onNavigate }) => {
         <div className="w-64 glass-card h-screen flex-shrink-0 flex flex-col p-4">
             <div className="flex items-center mb-8"><h1 className="text-2xl font-bold text-white">Stock Game</h1></div>
             <ul className="flex-grow">
-                <NavItem icon={<HomeIcon />} label="Home" name="home" />
                 <NavItem icon={<CompetitionsIcon />} label="My Competitions" name="competitions" />
                 <NavItem icon={<ExploreIcon />} label="Explore" name="explore" />
                 {user.role === 'admin' && <NavItem icon={<AdminIcon />} label="Admin" name="admin" />}
@@ -376,6 +397,8 @@ function App() {
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('competitions');
     const [isCreateModalOpen, setCreateModalOpen] = useState(false);
+    const [selectedCompetitionId, setSelectedCompetitionId] = useState(null);
+
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -394,19 +417,25 @@ function App() {
         });
         return () => unsubscribe();
     }, []);
+    
+    const handleNavigation = (tab) => {
+        setActiveTab(tab);
+        setSelectedCompetitionId(null); // Reset selected competition when changing tabs
+    }
 
     const renderContent = () => {
+        if (selectedCompetitionId) {
+            return <CompetitionDetailPage competitionId={selectedCompetitionId} onBack={() => setSelectedCompetitionId(null)} />;
+        }
         switch (activeTab) {
-            case 'home':
-                return <MyCompetitionsPage user={user} />; // Defaulting home to my competitions for now
             case 'competitions':
-                return <MyCompetitionsPage user={user} />;
+                return <MyCompetitionsPage user={user} onSelectCompetition={setSelectedCompetitionId} />;
             case 'explore':
                 return <ExplorePage user={user} />;
             case 'admin':
-                return user?.role === 'admin' ? <AdminPage /> : <MyCompetitionsPage user={user} />;
+                return user?.role === 'admin' ? <AdminPage /> : <MyCompetitionsPage user={user} onSelectCompetition={setSelectedCompetitionId}/>;
             default:
-                return <MyCompetitionsPage user={user} />;
+                return <MyCompetitionsPage user={user} onSelectCompetition={setSelectedCompetitionId} />;
         }
     };
 
@@ -419,9 +448,9 @@ function App() {
             {user ? (
                 <>
                     {isCreateModalOpen && <CreateCompetitionModal user={user} onClose={() => setCreateModalOpen(false)} />}
-                    <SideBar user={user} activeTab={activeTab} onNavigate={setActiveTab} />
+                    <SideBar user={user} activeTab={activeTab} onNavigate={handleNavigation} />
                     <main className="flex-grow">
-                        <div className="p-8">
+                        <div className="p-8 pb-0">
                              <button onClick={() => setCreateModalOpen(true)} className="bg-primary hover:opacity-90 text-white font-bold py-2 px-4 rounded-md flex items-center gap-2 float-right">
                                 <PlusIcon /> Create Competition
                             </button>
