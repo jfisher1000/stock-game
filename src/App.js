@@ -247,7 +247,10 @@ const MyCompetitionsPage = ({ user, onSelectCompetition }) => {
 
 const CompetitionCard = ({ competition, onClick }) => {
     return (
-        <div className="glass-card p-6 rounded-lg cursor-pointer hover:border-primary/50 border border-transparent transition-all" onClick={onClick}>
+        <button 
+            onClick={onClick} 
+            className="glass-card p-6 rounded-lg cursor-pointer hover:border-primary/50 border border-transparent transition-all text-left w-full"
+        >
             <div className="flex justify-between items-start">
                 <h3 className="text-xl font-bold">{competition.name}</h3>
                 {competition.isPublic ? <LockOpenIcon /> : <LockClosedIcon />}
@@ -258,7 +261,7 @@ const CompetitionCard = ({ competition, onClick }) => {
                 <UsersIcon />
                 <span className="ml-2">{(competition.participantIds || []).length} players</span>
             </div>
-        </div>
+        </button>
     );
 };
 
