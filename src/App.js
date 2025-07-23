@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { initializeApp } from 'firebase/app';
 import {
     getAuth,
@@ -17,10 +17,12 @@ import {
     where,
     onSnapshot,
     addDoc,
-    Timestamp,
     serverTimestamp,
-    writeBatch
+    writeBatch,
+    runTransaction,
+    Timestamp,
 } from 'firebase/firestore';
+import { debouncedSearchSymbols, getQuote } from './api';
 
 
 // --- Firebase Configuration ---
@@ -41,6 +43,7 @@ const db = getFirestore(app);
 // --- Helper & Icon Components ---
 const formatDate = (ts) => ts ? new Date(ts.seconds * 1000).toLocaleDateString() : 'N/A';
 const formatCurrency = (amount) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+const formatPercentage = (num) => `${(num * 100).toFixed(2)}%`;
 
 const Icon = ({ path, className = "w-6 h-6" }) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={path}></path></svg>;
 const HomeIcon = () => <Icon path="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />;
@@ -53,10 +56,14 @@ const PlusIcon = () => <Icon path="M12 4v16m8-8H4" />;
 const LockClosedIcon = () => <Icon className="w-4 h-4 text-gray-400" path="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />;
 const LockOpenIcon = () => <Icon className="w-4 h-4 text-green-400" path="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />;
 const UsersIcon = () => <Icon className="w-4 h-4 text-gray-400" path="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 3a4 4 0 014 4v2" />;
+const SearchIcon = () => <Icon path="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />;
+const TrendingUpIcon = () => <Icon className="w-4 h-4 text-green-500" path="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />;
+const TrendingDownIcon = () => <Icon className="w-4 h-4 text-red-500" path="M13 17h8m0 0v-8m0 8l-8-8-4 4-6-6" />;
 
 
 // --- Authentication Page Component ---
 const AuthPage = () => {
+    // ... (This component remains unchanged)
     const [isLogin, setIsLogin] = useState(true);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -106,6 +113,7 @@ const AuthPage = () => {
 // --- Competition & Page Components ---
 
 const CreateCompetitionModal = ({ user, onClose }) => {
+    // ... (This component remains unchanged)
     const [name, setName] = useState('');
     const [startingCash, setStartingCash] = useState(100000);
     const [isPublic, setIsPublic] = useState(true);
@@ -135,7 +143,8 @@ const CreateCompetitionModal = ({ user, onClose }) => {
                 username: user.username,
                 portfolioValue: startingCash,
                 cash: startingCash,
-                joinedAt: serverTimestamp()
+                joinedAt: serverTimestamp(),
+                holdings: {} // Initialize holdings
             });
 
             onClose();
@@ -175,6 +184,7 @@ const CreateCompetitionModal = ({ user, onClose }) => {
 };
 
 const Leaderboard = ({ competitionId }) => {
+    // ... (This component remains unchanged)
     const [participants, setParticipants] = useState([]);
 
     useEffect(() => {
@@ -216,6 +226,7 @@ const Leaderboard = ({ competitionId }) => {
 };
 
 const MyCompetitionsPage = ({ user, onSelectCompetition }) => {
+    // ... (This component remains unchanged)
     const [competitions, setCompetitions] = useState([]);
     const [loading, setLoading] = useState(true);
 
@@ -246,6 +257,7 @@ const MyCompetitionsPage = ({ user, onSelectCompetition }) => {
 };
 
 const CompetitionCard = ({ competition, onClick }) => {
+    // This component is updated to be a button for better click handling
     return (
         <button 
             onClick={onClick} 
@@ -266,6 +278,7 @@ const CompetitionCard = ({ competition, onClick }) => {
 };
 
 const ExplorePage = ({ user }) => {
+    // ... (This component remains unchanged, but we add holdings to the join action)
     const [competitions, setCompetitions] = useState([]);
     const [loading, setLoading] = useState(true);
 
@@ -290,7 +303,8 @@ const ExplorePage = ({ user }) => {
             username: user.username,
             portfolioValue: comp.startingCash,
             cash: comp.startingCash,
-            joinedAt: serverTimestamp()
+            joinedAt: serverTimestamp(),
+            holdings: {} // Initialize holdings
         });
         
         const competitionRef = doc(db, 'competitions', comp.id);
@@ -337,30 +351,295 @@ const ExplorePage = ({ user }) => {
     );
 };
 
-const CompetitionDetailPage = ({ competitionId, onBack }) => {
-    const [competition, setCompetition] = useState(null);
-    const [loading, setLoading] = useState(true);
+// --- NEW Trading & Portfolio Components ---
+
+const PortfolioView = ({ participantData, onTrade }) => {
+    if (!participantData) return <div className="glass-card p-6 rounded-lg mt-6"><p>Loading portfolio...</p></div>;
+
+    const { cash, holdings } = participantData;
+
+    return (
+        <div className="glass-card p-6 rounded-lg mt-6">
+            <h3 className="text-xl font-semibold mb-4">My Portfolio</h3>
+            <div className="mb-4">
+                <span className="text-gray-400">Cash Balance:</span>
+                <span className="text-2xl font-bold ml-2">{formatCurrency(cash)}</span>
+            </div>
+            <table className="w-full text-left">
+                <thead className="border-b border-white/10">
+                    <tr>
+                        <th className="p-2">Symbol</th>
+                        <th className="p-2">Shares</th>
+                        <th className="p-2">Avg. Cost</th>
+                        <th className="p-2">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {Object.keys(holdings || {}).length > 0 ? (
+                        Object.entries(holdings).map(([symbol, data]) => (
+                            <tr key={symbol} className="border-b border-white/20 last:border-0">
+                                <td className="p-2 font-bold">{symbol}</td>
+                                <td className="p-2">{data.shares}</td>
+                                <td className="p-2">{formatCurrency(data.avgCost)}</td>
+                                <td className="p-2">
+                                    <button onClick={() => onTrade(symbol)} className="bg-primary/50 text-xs py-1 px-2 rounded hover:bg-primary">Trade</button>
+                                </td>
+                            </tr>
+                        ))
+                    ) : (
+                        <tr>
+                            <td colSpan="4" className="p-4 text-center text-gray-400">You don't own any stocks yet.</td>
+                        </tr>
+                    )}
+                </tbody>
+            </table>
+        </div>
+    );
+};
+
+const StockSearchView = ({ onSelectStock }) => {
+    const [searchTerm, setSearchTerm] = useState('');
+    const [results, setResults] = useState([]);
+    const [loading, setLoading] = useState(false);
+
+    const handleSearch = useCallback(async (term) => {
+        if (term) {
+            setLoading(true);
+            const searchResults = await debouncedSearchSymbols(term);
+            setResults(searchResults);
+            setLoading(false);
+        } else {
+            setResults([]);
+        }
+    }, []);
 
     useEffect(() => {
-        const docRef = doc(db, 'competitions', competitionId);
-        const unsubscribe = onSnapshot(docRef, (doc) => {
+        handleSearch(searchTerm);
+    }, [searchTerm, handleSearch]);
+
+    return (
+        <div className="glass-card p-6 rounded-lg mt-6">
+            <h3 className="text-xl font-semibold mb-4">Search & Trade</h3>
+            <div className="relative">
+                <input
+                    type="text"
+                    placeholder="Search by symbol or name (e.g., AAPL)"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full bg-black/20 p-3 pl-10 rounded-md border border-white/20"
+                />
+                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><SearchIcon /></div>
+            </div>
+            {loading && <p className="text-center mt-4">Searching...</p>}
+            {results.length > 0 && (
+                <ul className="mt-4 max-h-60 overflow-y-auto">
+                    {results.map(result => (
+                        <li
+                            key={result['1. symbol']}
+                            onClick={() => onSelectStock(result['1. symbol'])}
+                            className="p-3 hover:bg-white/10 rounded-md cursor-pointer flex justify-between"
+                        >
+                            <span>
+                                <span className="font-bold">{result['1. symbol']}</span>
+                                <span className="text-gray-400 ml-2">{result['2. name']}</span>
+                            </span>
+                            <span className="text-gray-500">{result['4. region']}</span>
+                        </li>
+                    ))}
+                </ul>
+            )}
+        </div>
+    );
+};
+
+const TradeModal = ({ user, competitionId, symbol, onClose }) => {
+    const [quote, setQuote] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [tradeType, setTradeType] = useState('buy'); // 'buy' or 'sell'
+    const [shares, setShares] = useState(1);
+    const [error, setError] = useState('');
+    const [processing, setProcessing] = useState(false);
+    
+    useEffect(() => {
+        const fetchQuote = async () => {
+            setLoading(true);
+            const quoteData = await getQuote(symbol);
+            setQuote(quoteData);
+            setLoading(false);
+        };
+        fetchQuote();
+    }, [symbol]);
+
+    const handleTrade = async () => {
+        if (shares <= 0) {
+            setError('Please enter a positive number of shares.');
+            return;
+        }
+        setProcessing(true);
+        setError('');
+
+        const price = parseFloat(quote['05. price']);
+        const totalCost = shares * price;
+        const participantRef = doc(db, 'competitions', competitionId, 'participants', user.uid);
+
+        try {
+            await runTransaction(db, async (transaction) => {
+                const participantDoc = await transaction.get(participantRef);
+                if (!participantDoc.exists()) {
+                    throw "Participant document does not exist!";
+                }
+
+                const data = participantDoc.data();
+                const currentCash = data.cash;
+                const currentHoldings = data.holdings || {};
+
+                if (tradeType === 'buy') {
+                    if (currentCash < totalCost) {
+                        throw "Not enough cash to complete this purchase.";
+                    }
+                    const newCash = currentCash - totalCost;
+                    const existingShares = currentHoldings[symbol]?.shares || 0;
+                    const existingCost = currentHoldings[symbol]?.totalCost || 0;
+                    
+                    const newShares = existingShares + shares;
+                    const newTotalCost = existingCost + totalCost;
+                    const newAvgCost = newTotalCost / newShares;
+
+                    transaction.update(participantRef, {
+                        cash: newCash,
+                        [`holdings.${symbol}`]: { shares: newShares, avgCost: newAvgCost, totalCost: newTotalCost, name: quote['2. name'] }
+                    });
+
+                } else { // Sell
+                    const existingShares = currentHoldings[symbol]?.shares || 0;
+                    if (shares > existingShares) {
+                        throw "You don't own enough shares to sell.";
+                    }
+                    const newCash = currentCash + totalCost;
+                    const newShares = existingShares - shares;
+
+                    if (newShares === 0) {
+                        const newHoldings = { ...currentHoldings };
+                        delete newHoldings[symbol];
+                        transaction.update(participantRef, { cash: newCash, holdings: newHoldings });
+                    } else {
+                        const existingTotalCost = currentHoldings[symbol].totalCost;
+                        const avgCost = currentHoldings[symbol].avgCost;
+                        const newTotalCost = existingTotalCost - (shares * avgCost); // Reduce total cost based on avg cost
+                        transaction.update(participantRef, {
+                            cash: newCash,
+                            [`holdings.${symbol}.shares`]: newShares,
+                             [`holdings.${symbol}.totalCost`]: newTotalCost
+                        });
+                    }
+                }
+            });
+            onClose(); // Close modal on success
+        } catch (e) {
+            console.error("Transaction failed: ", e);
+            setError(e.toString());
+        }
+        setProcessing(false);
+    };
+
+    const currentPrice = quote ? parseFloat(quote['05. price']) : 0;
+    const change = quote ? parseFloat(quote['09. change']) : 0;
+    const isPositiveChange = change >= 0;
+
+    return (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="glass-card p-8 rounded-lg w-full max-w-md text-white">
+                {loading ? <p>Loading quote...</p> : !quote ? <p>Could not retrieve quote for {symbol}.</p> : (
+                    <>
+                        <h2 className="text-2xl font-bold mb-1">{symbol}</h2>
+                        <p className="text-gray-400 mb-4">{quote['2. name'] || 'N/A'}</p>
+                        <div className="text-4xl font-bold mb-1 flex items-center gap-4">
+                            {formatCurrency(currentPrice)}
+                            <span className={`text-lg font-semibold flex items-center ${isPositiveChange ? 'text-green-500' : 'text-red-500'}`}>
+                                {isPositiveChange ? <TrendingUpIcon /> : <TrendingDownIcon />}
+                                {formatCurrency(change)} ({quote['10. change percent']})
+                            </span>
+                        </div>
+                        <div className="flex border border-white/20 rounded-md my-6">
+                            <button onClick={() => setTradeType('buy')} className={`w-1/2 p-3 rounded-l-md ${tradeType === 'buy' ? 'bg-primary' : 'hover:bg-white/10'}`}>Buy</button>
+                            <button onClick={() => setTradeType('sell')} className={`w-1/2 p-3 rounded-r-md ${tradeType === 'sell' ? 'bg-danger' : 'hover:bg-white/10'}`}>Sell</button>
+                        </div>
+                        <div className="mb-4">
+                            <label className="block mb-2">Shares</label>
+                            <input type="number" min="1" value={shares} onChange={e => setShares(parseInt(e.target.value, 10))} className="w-full bg-black/20 p-3 rounded-md border border-white/20" />
+                        </div>
+                        <div className="text-lg font-bold mb-4">
+                            Total: {formatCurrency(shares * currentPrice)}
+                        </div>
+                        {error && <p className="text-danger mb-4">{error}</p>}
+                        <div className="flex justify-end gap-4">
+                            <button type="button" onClick={onClose} className="py-2 px-4 rounded-md hover:bg-white/10">Cancel</button>
+                            <button onClick={handleTrade} disabled={processing} className={`py-2 px-4 rounded-md ${tradeType === 'buy' ? 'bg-primary' : 'bg-danger'} hover:opacity-90 disabled:opacity-50`}>
+                                {processing ? 'Processing...' : `Confirm ${tradeType === 'buy' ? 'Buy' : 'Sell'}`}
+                            </button>
+                        </div>
+                    </>
+                )}
+            </div>
+        </div>
+    );
+};
+
+
+const CompetitionDetailPage = ({ user, competitionId, onBack }) => {
+    const [competition, setCompetition] = useState(null);
+    const [participantData, setParticipantData] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [tradeModalSymbol, setTradeModalSymbol] = useState(null);
+
+    useEffect(() => {
+        const compRef = doc(db, 'competitions', competitionId);
+        const unsubscribeComp = onSnapshot(compRef, (doc) => {
             if (doc.exists()) {
                 setCompetition({ id: doc.id, ...doc.data() });
             }
             setLoading(false);
         });
-        return () => unsubscribe();
-    }, [competitionId]);
+
+        const participantRef = doc(db, 'competitions', competitionId, 'participants', user.uid);
+        const unsubscribeParticipant = onSnapshot(participantRef, (doc) => {
+            if (doc.exists()) {
+                setParticipantData(doc.data());
+            }
+        });
+
+        return () => {
+            unsubscribeComp();
+            unsubscribeParticipant();
+        };
+    }, [competitionId, user.uid]);
 
     if (loading) return <p className="p-8 text-white">Loading competition details...</p>;
     if (!competition) return <p className="p-8 text-white">Competition not found.</p>;
 
     return (
         <div className="p-8 text-white">
+            {tradeModalSymbol && (
+                <TradeModal 
+                    user={user}
+                    competitionId={competitionId} 
+                    symbol={tradeModalSymbol} 
+                    onClose={() => setTradeModalSymbol(null)} 
+                />
+            )}
             <button onClick={onBack} className="mb-6 text-primary hover:underline">{'< Back to My Competitions'}</button>
             <h1 className="text-4xl font-bold">{competition.name}</h1>
             <p className="text-gray-400 mt-2">Created by {competition.ownerName} on {formatDate(competition.createdAt)}</p>
-            <Leaderboard competitionId={competitionId} />
+            
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-6">
+                <div className="lg:col-span-2">
+                    <Leaderboard competitionId={competitionId} />
+                </div>
+                <div className="lg:col-span-1">
+                    <PortfolioView participantData={participantData} onTrade={setTradeModalSymbol} />
+                    <StockSearchView onSelectStock={setTradeModalSymbol} />
+                </div>
+            </div>
         </div>
     );
 };
@@ -371,6 +650,7 @@ const AdminPage = () => <div className="p-8 text-white"><h1 className="text-4xl 
 
 // --- Navigation Components ---
 const SideBar = ({ user, activeTab, onNavigate }) => {
+    // ... (This component remains unchanged)
     const NavItem = ({ icon, label, name }) => (
         <li onClick={() => onNavigate(name)} className={`flex items-center p-3 my-1 rounded-lg cursor-pointer transition-colors ${activeTab === name ? 'bg-primary text-white' : 'text-gray-300 hover:bg-white/10'}`}>
             {icon}
@@ -411,7 +691,11 @@ function App() {
                 if (userDoc.exists()) {
                     setUser({ uid: firebaseUser.uid, ...userDoc.data() });
                 } else {
-                    setUser({ uid: firebaseUser.uid, email: firebaseUser.email, username: 'Player', role: 'player' });
+                    // This case is for users who authenticated but might not have a user doc yet.
+                    // A default profile is created.
+                    const defaultUserData = { uid: firebaseUser.uid, email: firebaseUser.email, username: 'New Player', role: 'player' };
+                    await setDoc(userDocRef, defaultUserData);
+                    setUser(defaultUserData);
                 }
             } else {
                 setUser(null);
@@ -428,7 +712,7 @@ function App() {
 
     const renderContent = () => {
         if (selectedCompetitionId) {
-            return <CompetitionDetailPage competitionId={selectedCompetitionId} onBack={() => setSelectedCompetitionId(null)} />;
+            return <CompetitionDetailPage user={user} competitionId={selectedCompetitionId} onBack={() => setSelectedCompetitionId(null)} />;
         }
         switch (activeTab) {
             case 'competitions':
@@ -453,7 +737,7 @@ function App() {
                     {isCreateModalOpen && <CreateCompetitionModal user={user} onClose={() => setCreateModalOpen(false)} />}
                     <SideBar user={user} activeTab={activeTab} onNavigate={handleNavigation} />
                     <main className="flex-grow">
-                        <div className="p-8 pb-0">
+                        <div className="p-8 pb-0 text-right">
                              <button onClick={() => setCreateModalOpen(true)} className="bg-primary hover:opacity-90 text-white font-bold py-2 px-4 rounded-md flex items-center gap-2 float-right">
                                 <PlusIcon /> Create Competition
                             </button>
