@@ -27,13 +27,13 @@ import {
 // REACT_APP_AUTH_DOMAIN=your-project.firebaseapp.com
 // ...and so on for all the keys.
 const firebaseConfig = {
-  apiKey: "AIzaSyCC_fIRnWLvovO4Mk2BLmecsisoSzgklGQ",
-  authDomain: "stock-game-26b54.firebaseapp.com",
-  projectId: "stock-game-26b54",
-  storageBucket: "stock-game-26b54.firebasestorage.app",
-  messagingSenderId: "455526292127",
-  appId: "1:455526292127:web:889ca05dab75b0c4ae60aa",
-  measurementId: "G-XQJ9HG5WLG"
+  apiKey: process.env.REACT_APP_API_KEY,
+  authDomain: process.env.REACT_APP_AUTH_DOMAIN,
+  projectId: process.env.REACT_APP_PROJECT_ID,
+  storageBucket: process.env.REACT_APP_STORAGE_BUCKET,
+  messagingSenderId: process.env.REACT_APP_MESSAGING_SENDER_ID,
+  appId: process.env.REACT_APP_APP_ID,
+  measurementId: process.env.REACT_APP_MEASUREMENT_ID
 };
 
 // --- Initialize Firebase ---
