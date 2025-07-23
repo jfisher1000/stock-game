@@ -58,14 +58,14 @@ const UsersIcon = () => <Icon path="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 7a
 // --- Navigation Components ---
 const SideBar = ({ user, activeTab, onNavigate }) => {
     const NavItem = ({ icon, label, name }) => (
-        <li onClick={() => onNavigate({ name })} className={`flex items-center p-3 my-1 rounded-lg cursor-pointer transition-colors ${activeTab === name ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>
+        <li onClick={() => onNavigate({ name })} className={`flex items-center p-3 my-1 rounded-lg cursor-pointer transition-colors ${activeTab === name ? 'bg-primary text-white' : 'text-gray-300 hover:bg-white/10'}`}>
             {icon}
             <span className="ml-3">{label}</span>
         </li>
     );
 
     return (
-        <div className="w-64 bg-gray-800 h-screen flex flex-col p-4 border-r border-gray-700">
+        <div className="w-64 glass-card h-screen flex-shrink-0 flex flex-col p-4">
             <div className="flex items-center mb-8">
                 <h1 className="text-2xl font-bold text-white">Stock Game</h1>
             </div>
@@ -74,12 +74,12 @@ const SideBar = ({ user, activeTab, onNavigate }) => {
                 <NavItem icon={<CompetitionsIcon />} label="My Competitions" name="competitions" />
                 <NavItem icon={<ExploreIcon />} label="Explore" name="explore" />
             </ul>
-            <div className="border-t border-gray-700 pt-4">
+            <div className="border-t border-white/20 pt-4">
                  <div className="flex items-center p-3 rounded-lg">
                     <ProfileIcon />
                     <span className="ml-3 text-white">{user.username || 'Player'}</span>
                 </div>
-                <div onClick={() => signOut(auth)} className="flex items-center p-3 rounded-lg cursor-pointer text-gray-300 hover:bg-gray-700">
+                <div onClick={() => signOut(auth)} className="flex items-center p-3 rounded-lg cursor-pointer text-gray-300 hover:bg-white/10">
                     <LogoutIcon />
                     <span className="ml-3">Logout</span>
                 </div>
@@ -115,18 +115,18 @@ const AuthPage = () => {
     };
 
     return (
-        <div className="min-h-screen bg-gray-900 flex items-center justify-center p-4">
-            <div className="max-w-md w-full bg-gray-800 rounded-xl shadow-lg p-8 border border-indigo-500/30">
+        <div className="min-h-screen flex items-center justify-center p-4">
+            <div className="max-w-md w-full glass-card rounded-xl shadow-lg p-8">
                 <h1 className="text-3xl font-bold text-center text-white mb-2">{isLogin ? 'Welcome Back' : 'Create Account'}</h1>
-                <p className="text-center text-gray-400 mb-6">{isLogin ? 'Sign in to view competitions' : 'Join the ultimate virtual trading game'}</p>
+                <p className="text-center text-gray-300 mb-6">{isLogin ? 'Sign in to view competitions' : 'Join the ultimate virtual trading game'}</p>
                 <form onSubmit={handleAuthAction}>
-                    {!isLogin && (<div className="mb-4"><label className="block text-gray-400 mb-2" htmlFor="username">Username</label><input type="text" id="username" value={username} onChange={(e) => setUsername(e.target.value)} className="w-full bg-gray-900 text-white p-3 rounded-md border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500" required /></div>)}
-                    <div className="mb-4"><label className="block text-gray-400 mb-2" htmlFor="email">Email</label><input type="email" id="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-gray-900 text-white p-3 rounded-md border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500" required /></div>
-                    <div className="mb-6"><label className="block text-gray-400 mb-2" htmlFor="password">Password</label><input type="password" id="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-gray-900 text-white p-3 rounded-md border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500" required /></div>
-                    {error && <p className="text-red-500 text-center mb-4">{error}</p>}
-                    <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-md transition duration-300 disabled:bg-indigo-800" disabled={loading}>{loading ? 'Processing...' : (isLogin ? 'Log In' : 'Register')}</button>
+                    {!isLogin && (<div className="mb-4"><label className="block text-gray-300 mb-2" htmlFor="username">Username</label><input type="text" id="username" value={username} onChange={(e) => setUsername(e.target.value)} className="w-full bg-black/20 text-white p-3 rounded-md border border-white/20 focus:outline-none focus:ring-2 focus:ring-primary" required /></div>)}
+                    <div className="mb-4"><label className="block text-gray-300 mb-2" htmlFor="email">Email</label><input type="email" id="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-black/20 text-white p-3 rounded-md border border-white/20 focus:outline-none focus:ring-2 focus:ring-primary" required /></div>
+                    <div className="mb-6"><label className="block text-gray-300 mb-2" htmlFor="password">Password</label><input type="password" id="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-black/20 text-white p-3 rounded-md border border-white/20 focus:outline-none focus:ring-2 focus:ring-primary" required /></div>
+                    {error && <p className="text-danger text-center mb-4">{error}</p>}
+                    <button type="submit" className="w-full bg-primary hover:opacity-90 text-white font-bold py-3 rounded-md transition duration-300 disabled:opacity-50" disabled={loading}>{loading ? 'Processing...' : (isLogin ? 'Log In' : 'Register')}</button>
                 </form>
-                <p className="text-center text-gray-500 mt-6">{isLogin ? "Don't have an account?" : "Already have an account?"}<button onClick={() => setIsLogin(!isLogin)} className="text-indigo-400 hover:text-indigo-300 ml-2 font-semibold">{isLogin ? 'Register' : 'Log In'}</button></p>
+                <p className="text-center text-gray-400 mt-6">{isLogin ? "Don't have an account?" : "Already have an account?"}<button onClick={() => setIsLogin(!isLogin)} className="text-info hover:underline ml-2 font-semibold">{isLogin ? 'Register' : 'Log In'}</button></p>
             </div>
         </div>
     );
@@ -204,7 +204,7 @@ const HomePage = ({ user, onSelectCompetition, onNavigate }) => {
         <div className="p-4 sm:p-6 lg:p-8">
             <header className="flex justify-between items-center mb-6">
                 <h1 className="text-3xl font-bold text-white">Home</h1>
-                <button onClick={() => onNavigate({ name: 'create-competition'})} className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md transition">Create Competition</button>
+                <button onClick={() => onNavigate({ name: 'create-competition'})} className="bg-success hover:opacity-90 text-white font-bold py-2 px-4 rounded-md transition">Create Competition</button>
             </header>
             <main>
                 {invitations.length > 0 && (
@@ -212,11 +212,11 @@ const HomePage = ({ user, onSelectCompetition, onNavigate }) => {
                         <h2 className="text-2xl font-bold text-yellow-400 mb-4">My Invitations</h2>
                         <div className="space-y-3">
                             {invitations.map(invite => (
-                                <div key={invite.id} className="bg-gray-800 p-4 rounded-lg flex justify-between items-center">
-                                    <p className="text-white"><span className="font-bold">{invite.inviterUsername}</span> invited you to join <span className="font-bold text-indigo-400">{invite.competitionName}</span></p>
+                                <div key={invite.id} className="glass-card p-4 rounded-lg flex justify-between items-center">
+                                    <p className="text-white"><span className="font-bold">{invite.inviterUsername}</span> invited you to join <span className="font-bold text-info">{invite.competitionName}</span></p>
                                     <div className="flex space-x-2">
-                                        <button onClick={() => handleAcceptInvite(invite)} className="bg-green-600 hover:bg-green-700 text-white font-bold py-1 px-3 rounded-md transition">Accept</button>
-                                        <button onClick={() => handleDeclineInvite(invite)} className="bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-3 rounded-md transition">Decline</button>
+                                        <button onClick={() => handleAcceptInvite(invite)} className="bg-success hover:opacity-90 text-white font-bold py-1 px-3 rounded-md transition">Accept</button>
+                                        <button onClick={() => handleDeclineInvite(invite)} className="bg-danger hover:opacity-90 text-white font-bold py-1 px-3 rounded-md transition">Decline</button>
                                     </div>
                                 </div>
                             ))}
@@ -228,31 +228,31 @@ const HomePage = ({ user, onSelectCompetition, onNavigate }) => {
                     competitions.length > 0 ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             {competitions.map(comp => (
-                                <div key={comp.id} className="bg-gray-800 rounded-lg p-6 flex flex-col justify-between border border-gray-700 hover:border-indigo-500 transition-all">
+                                <div key={comp.id} className="glass-card rounded-lg p-6 flex flex-col justify-between hover:border-primary transition-all">
                                     <div>
                                         <div className="flex justify-between items-center mb-2">
-                                            <h2 className="text-xl font-bold text-indigo-400 flex items-center gap-2">
+                                            <h2 className="text-xl font-bold text-white flex items-center gap-2">
                                                 <LockIcon isPublic={comp.isPublic} />
                                                 {comp.name}
                                             </h2>
                                         </div>
-                                        <p className="text-gray-400 mt-2 mb-4 h-20 overflow-hidden">{comp.description}</p>
-                                        <p className="text-sm text-gray-500">Created by: {comp.ownerName || 'Admin'}</p>
-                                        <div className="flex justify-between text-sm text-gray-500 mt-2">
+                                        <p className="text-gray-300 mt-2 mb-4 h-20 overflow-hidden">{comp.description}</p>
+                                        <p className="text-sm text-gray-400">Created by: {comp.ownerName || 'Admin'}</p>
+                                        <div className="flex justify-between text-sm text-gray-400 mt-2">
                                             <span>Starts: {formatDate(comp.startDate)}</span>
                                             <span className="flex items-center gap-1"><UsersIcon /> {competitionStats[comp.id] || 0}</span>
                                         </div>
                                     </div>
                                     {userPortfolios[comp.id] ? (
-                                        <button onClick={() => onSelectCompetition(comp.id)} className="mt-6 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md transition">View Competition</button>
+                                        <button onClick={() => onSelectCompetition(comp.id)} className="mt-6 w-full bg-primary hover:opacity-90 text-white font-bold py-2 px-4 rounded-md transition">View Competition</button>
                                     ) : (
-                                        <button onClick={() => handleJoinCompetition(comp)} className="mt-6 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md transition">Join Competition</button>
+                                        <button onClick={() => handleJoinCompetition(comp)} className="mt-6 w-full bg-info hover:opacity-90 text-white font-bold py-2 px-4 rounded-md transition">Join Competition</button>
                                     )}
                                 </div>
                             ))}
                         </div>
                     ) : (
-                        <div className="text-center bg-gray-800 p-8 rounded-lg">
+                        <div className="text-center glass-card p-8 rounded-lg">
                             <h2 className="text-2xl font-bold text-white">No Public Competitions Found</h2>
                         </div>
                     )
@@ -262,7 +262,6 @@ const HomePage = ({ user, onSelectCompetition, onNavigate }) => {
     );
 };
 
-// This is a new page to show only competitions the user has joined
 const MyCompetitionsPage = ({ user, onSelectCompetition, onNavigate }) => {
     const [myCompetitions, setMyCompetitions] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -293,18 +292,18 @@ const MyCompetitionsPage = ({ user, onSelectCompetition, onNavigate }) => {
         <div className="p-4 sm:p-6 lg:p-8">
              <header className="flex justify-between items-center mb-6">
                 <h1 className="text-3xl font-bold text-white">My Competitions</h1>
-                <button onClick={() => onNavigate({ name: 'create-competition'})} className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md transition">Create Competition</button>
+                <button onClick={() => onNavigate({ name: 'create-competition'})} className="bg-success hover:opacity-90 text-white font-bold py-2 px-4 rounded-md transition">Create Competition</button>
             </header>
             {loading ? <p className="text-white">Loading...</p> : (
                 myCompetitions.length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {myCompetitions.map(comp => (
-                            <div key={comp.id} className="bg-gray-800 rounded-lg p-6 flex flex-col justify-between border border-gray-700">
+                            <div key={comp.id} className="glass-card rounded-lg p-6 flex flex-col justify-between">
                                 <div>
-                                    <h2 className="text-xl font-bold text-indigo-400">{comp.name}</h2>
-                                    <p className="text-gray-400 mt-2">{comp.description}</p>
+                                    <h2 className="text-xl font-bold text-white">{comp.name}</h2>
+                                    <p className="text-gray-300 mt-2">{comp.description}</p>
                                 </div>
-                                <button onClick={() => onSelectCompetition(comp.id)} className="mt-6 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md transition">View</button>
+                                <button onClick={() => onSelectCompetition(comp.id)} className="mt-6 w-full bg-primary hover:opacity-90 text-white font-bold py-2 px-4 rounded-md transition">View</button>
                             </div>
                         ))}
                     </div>
@@ -319,7 +318,7 @@ const MyCompetitionsPage = ({ user, onSelectCompetition, onNavigate }) => {
 const ExplorePage = () => (
     <div className="p-4 sm:p-6 lg:p-8">
         <h1 className="text-3xl font-bold text-white">Explore</h1>
-        <p className="text-gray-400 mt-4">Stock searching and other discovery features will be available here in the future.</p>
+        <p className="text-gray-300 mt-4">Stock searching and other discovery features will be available here in the future.</p>
     </div>
 );
 
@@ -420,27 +419,27 @@ const CompetitionPage = ({ user, competitionId }) => {
     return (
         <div className="p-4 sm:p-6 lg:p-8">
             {showInviteModal && <InviteModal competition={competition} currentUser={user} onClose={() => setShowInviteModal(false)} />}
-            <h1 className="text-4xl font-bold text-indigo-400 mb-8">{competition.name}</h1>
+            <h1 className="text-4xl font-bold text-white mb-8">{competition.name}</h1>
             <main className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <div className="lg:col-span-2">
-                    <div className="bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
-                         <h2 className="text-2xl font-bold mb-4">My Portfolio</h2>
+                    <div className="glass-card p-6 rounded-xl shadow-lg mb-8">
+                         <h2 className="text-2xl font-bold text-white mb-4">My Portfolio</h2>
                          <div className="grid grid-cols-3 gap-4 text-center">
-                            <div><p className="text-gray-400 text-sm">Cash</p><p className="text-2xl font-semibold text-green-400">{formatCurrency(portfolio.cash)}</p></div>
-                            <div><p className="text-gray-400 text-sm">Stocks</p><p className="text-2xl font-semibold text-blue-400">{formatCurrency(portfolioValue)}</p></div>
+                            <div><p className="text-gray-300 text-sm">Cash</p><p className="text-2xl font-semibold text-success">{formatCurrency(portfolio.cash)}</p></div>
+                            <div><p className="text-gray-300 text-sm">Stocks</p><p className="text-2xl font-semibold text-info">{formatCurrency(portfolioValue)}</p></div>
                             <div><p className="text-2xl font-bold text-yellow-400">Total</p><p className="text-2xl font-bold text-yellow-400">{formatCurrency(totalValue)}</p></div>
                          </div>
-                         <div className="mt-4 border-t border-gray-700 pt-4">
-                             <h3 className="font-bold text-lg mb-2">My Holdings</h3>
+                         <div className="mt-4 border-t border-white/20 pt-4">
+                             <h3 className="font-bold text-lg text-white mb-2">My Holdings</h3>
                              {Object.keys(portfolio.stocks).length > 0 ? Object.entries(portfolio.stocks).map(([symbol, data]) => (
-                                <div key={symbol} className="flex justify-between items-center bg-gray-900 p-2 rounded-md mb-2">
-                                    <span>{data.quantity} x {symbol}</span>
-                                    <span>{formatCurrency(data.quantity * (stockData[symbol]?.price || 0))}</span>
+                                <div key={symbol} className="flex justify-between items-center bg-black/20 p-2 rounded-md mb-2">
+                                    <span className="text-white">{data.quantity} x {symbol}</span>
+                                    <span className="text-white">{formatCurrency(data.quantity * (stockData[symbol]?.price || 0))}</span>
                                 </div>
-                             )) : <p className="text-gray-500">No stocks owned yet.</p>}
+                             )) : <p className="text-gray-400">No stocks owned yet.</p>}
                          </div>
                     </div>
-                    {error && <div className="bg-red-500 text-white p-3 rounded-md mb-4 text-center">{error}</div>}
+                    {error && <div className="bg-danger text-white p-3 rounded-md mb-4 text-center">{error}</div>}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         {Object.entries(stockData).map(([symbol, data]) => (
                             <Stock key={symbol} symbol={symbol} data={data} portfolio={portfolio} onTrade={handleTrade} />
@@ -448,25 +447,25 @@ const CompetitionPage = ({ user, competitionId }) => {
                     </div>
                 </div>
                 <aside className="space-y-8">
-                    <div className="bg-gray-800 p-6 rounded-xl shadow-lg">
-                        <h2 className="text-2xl font-bold mb-4">Competition Details</h2>
-                        <div className="space-y-2 text-sm text-white">
-                            <div className="flex justify-between"><span>Owner:</span> <span className="font-semibold">{competition.ownerName}</span></div>
+                    <div className="glass-card p-6 rounded-xl shadow-lg">
+                        <h2 className="text-2xl font-bold text-white mb-4">Competition Details</h2>
+                        <div className="space-y-2 text-sm text-gray-300">
+                            <div className="flex justify-between"><span>Owner:</span> <span className="font-semibold text-white">{competition.ownerName}</span></div>
                             <div className="flex justify-between"><span>Visibility:</span> <span className={`font-semibold ${competition.isPublic ? 'text-green-400' : 'text-yellow-400'}`}>{competition.isPublic ? 'Public' : 'Private'}</span></div>
-                            <div className="flex justify-between"><span>Starting Cash:</span> <span className="font-semibold">{formatCurrency(competition.initialCash)}</span></div>
-                            <div className="flex justify-between"><span>Ends:</span> <span className="font-semibold">{formatDate(competition.endDate)}</span></div>
+                            <div className="flex justify-between"><span>Starting Cash:</span> <span className="font-semibold text-white">{formatCurrency(competition.initialCash)}</span></div>
+                            <div className="flex justify-between"><span>Ends:</span> <span className="font-semibold text-white">{formatDate(competition.endDate)}</span></div>
                         </div>
                         {isOwner && !competition.isPublic && (
-                            <button onClick={() => setShowInviteModal(true)} className="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md transition">Invite Players</button>
+                            <button onClick={() => setShowInviteModal(true)} className="mt-4 w-full bg-info hover:opacity-90 text-white font-bold py-2 px-4 rounded-md transition">Invite Players</button>
                         )}
                     </div>
-                    <div className="bg-gray-800 p-6 rounded-xl shadow-lg">
-                        <h2 className="text-2xl font-bold mb-4">Leaderboard</h2>
+                    <div className="glass-card p-6 rounded-xl shadow-lg">
+                        <h2 className="text-2xl font-bold text-white mb-4">Leaderboard</h2>
                         <div className="space-y-3">
                             {leaderboard.map((player, index) => (
-                                <div key={player.userId} className={`flex justify-between items-center p-3 rounded-lg ${player.userId === user.uid ? 'bg-indigo-600' : 'bg-gray-900'}`}>
-                                    <div className="flex items-center"><span className="text-lg font-bold w-8">{index + 1}</span><span className="font-semibold">{player.username}</span></div>
-                                    <span className="font-bold text-green-400">{formatCurrency(player.totalValue)}</span>
+                                <div key={player.userId} className={`flex justify-between items-center p-3 rounded-lg ${player.userId === user.uid ? 'bg-primary' : 'bg-black/20'}`}>
+                                    <div className="flex items-center"><span className="text-lg font-bold w-8 text-white">{index + 1}</span><span className="font-semibold text-white">{player.username}</span></div>
+                                    <span className="font-bold text-success">{formatCurrency(player.totalValue)}</span>
                                 </div>
                             ))}
                         </div>
@@ -481,13 +480,13 @@ const Stock = ({ symbol, data, portfolio, onTrade }) => {
     const [quantity, setQuantity] = useState(1);
     const sharesOwned = portfolio?.stocks?.[symbol]?.quantity || 0;
     return (
-        <div className="bg-gray-800 p-4 rounded-lg shadow-md flex flex-col justify-between border border-gray-700">
+        <div className="glass-card p-4 rounded-lg shadow-md flex flex-col justify-between">
             <div>
-                <h3 className="text-xl font-bold">{symbol}</h3>
-                <p className="text-2xl font-light text-green-400">{formatCurrency(data.price)}</p>
+                <h3 className="text-xl font-bold text-white">{symbol}</h3>
+                <p className="text-2xl font-light text-success">{formatCurrency(data.price)}</p>
                 {sharesOwned > 0 && <p className="text-sm text-yellow-400 mt-1">Owned: {sharesOwned}</p>}
             </div>
-            <div className="mt-4"><div className="flex items-center space-x-2"><input type="number" value={quantity} onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))} className="w-20 bg-gray-900 text-white p-2 rounded-md border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500" min="1" /><button onClick={() => onTrade(symbol, quantity, 'buy')} className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md transition">Buy</button><button onClick={() => onTrade(symbol, quantity, 'sell')} className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-md transition disabled:bg-red-900" disabled={sharesOwned === 0}>Sell</button></div></div>
+            <div className="mt-4"><div className="flex items-center space-x-2"><input type="number" value={quantity} onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))} className="w-20 bg-black/20 text-white p-2 rounded-md border border-white/20 focus:outline-none focus:ring-2 focus:ring-primary" min="1" /><button onClick={() => onTrade(symbol, quantity, 'buy')} className="flex-1 bg-success hover:opacity-90 text-white font-bold py-2 px-4 rounded-md transition">Buy</button><button onClick={() => onTrade(symbol, quantity, 'sell')} className="flex-1 bg-danger hover:opacity-90 text-white font-bold py-2 px-4 rounded-md transition disabled:opacity-50" disabled={sharesOwned === 0}>Sell</button></div></div>
         </div>
     );
 };
@@ -535,7 +534,7 @@ const CreateCompetitionPage = ({ user, onExit }) => {
     };
 
     return (
-        <div className="p-4 sm:p-6 lg:p-8"><main className="max-w-3xl mx-auto"><h1 className="text-3xl font-bold text-green-400 mb-6">Create Your Competition</h1><div className="bg-gray-800 p-6 rounded-lg border border-gray-700"><form onSubmit={handleCreateCompetition}><div className="mb-4"><label className="block text-gray-400 mb-2">Competition Name</label><input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full bg-gray-900 p-2 rounded border border-gray-600" required /></div><div className="mb-4"><label className="block text-gray-400 mb-2">Description</label><textarea value={description} onChange={e => setDescription(e.target.value)} className="w-full bg-gray-900 p-2 rounded border border-gray-600" required /></div><div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4"><div><label className="block text-gray-400 mb-2">Start Date</label><input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full bg-gray-900 p-2 rounded border border-gray-600" required /></div><div><label className="block text-gray-400 mb-2">Duration</label><select value={duration} onChange={e => setDuration(e.target.value)} className="w-full bg-gray-900 p-2 rounded border border-gray-600"><option value="7">1 Week</option><option value="14">2 Weeks</option><option value="30">1 Month</option><option value="60">2 Months</option><option value="90">3 Months</option><option value="180">6 Months</option><option value="365">1 Year</option></select></div></div><div className="mb-4"><label className="block text-gray-400 mb-2">Starting Cash</label><input type="number" value={initialCash} onChange={e => setInitialCash(e.target.value)} className="w-full bg-gray-900 p-2 rounded border border-gray-600" required /></div><div className="mb-4"><label className="block text-gray-400 mb-2">Tradable Assets (comma-separated)</label><input type="text" value={assets} onChange={e => setAssets(e.target.value)} className="w-full bg-gray-900 p-2 rounded border border-gray-600" placeholder="e.g., AAPL, GOOGL, TSLA" required /></div><div className="mb-6 flex items-center justify-between bg-gray-900 p-3 rounded-md"><div><label className="block text-gray-300">Public Competition</label><p className="text-xs text-gray-500">Anyone can see and join this competition.</p></div><label className="relative inline-flex items-center cursor-pointer"><input type="checkbox" checked={isPublic} onChange={() => setIsPublic(!isPublic)} className="sr-only peer" /><div className="w-11 h-6 bg-gray-600 rounded-full peer peer-focus:ring-4 peer-focus:ring-green-800 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div></label></div>{error && <p className="text-red-500 mb-4">{error}</p>}<button type="submit" className="w-full bg-green-600 hover:bg-green-700 font-bold py-3 rounded-md" disabled={loading}>{loading ? 'Creating...' : 'Create Competition'}</button></form></div></main></div>
+        <div className="p-4 sm:p-6 lg:p-8"><main className="max-w-3xl mx-auto"><h1 className="text-3xl font-bold text-white mb-6">Create Your Competition</h1><div className="glass-card p-6 rounded-lg"><form onSubmit={handleCreateCompetition}><div className="mb-4"><label className="block text-gray-300 mb-2">Competition Name</label><input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full bg-black/20 p-2 rounded border border-white/20 text-white" required /></div><div className="mb-4"><label className="block text-gray-300 mb-2">Description</label><textarea value={description} onChange={e => setDescription(e.target.value)} className="w-full bg-black/20 p-2 rounded border border-white/20 text-white" required /></div><div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4"><div><label className="block text-gray-300 mb-2">Start Date</label><input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full bg-black/20 p-2 rounded border border-white/20 text-white" required /></div><div><label className="block text-gray-300 mb-2">Duration</label><select value={duration} onChange={e => setDuration(e.target.value)} className="w-full bg-black/20 p-2 rounded border border-white/20 text-white"><option value="7">1 Week</option><option value="14">2 Weeks</option><option value="30">1 Month</option><option value="60">2 Months</option><option value="90">3 Months</option><option value="180">6 Months</option><option value="365">1 Year</option></select></div></div><div className="mb-4"><label className="block text-gray-300 mb-2">Starting Cash</label><input type="number" value={initialCash} onChange={e => setInitialCash(e.target.value)} className="w-full bg-black/20 p-2 rounded border border-white/20 text-white" required /></div><div className="mb-4"><label className="block text-gray-300 mb-2">Tradable Assets (comma-separated)</label><input type="text" value={assets} onChange={e => setAssets(e.target.value)} className="w-full bg-black/20 p-2 rounded border border-white/20 text-white" placeholder="e.g., AAPL, GOOGL, TSLA" required /></div><div className="mb-6 flex items-center justify-between bg-black/20 p-3 rounded-md"><div><label className="block text-white">Public Competition</label><p className="text-xs text-gray-400">Anyone can see and join this competition.</p></div><label className="relative inline-flex items-center cursor-pointer"><input type="checkbox" checked={isPublic} onChange={() => setIsPublic(!isPublic)} className="sr-only peer" /><div className="w-11 h-6 bg-gray-600 rounded-full peer peer-focus:ring-4 peer-focus:ring-green-800 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div></label></div>{error && <p className="text-danger mb-4">{error}</p>}<button type="submit" className="w-full bg-success hover:opacity-90 font-bold py-3 rounded-md text-white" disabled={loading}>{loading ? 'Creating...' : 'Create Competition'}</button></form></div></main></div>
     );
 };
 
@@ -545,7 +544,7 @@ const AdminPage = () => {
         const q = query(collection(db, "competitions"));
         onSnapshot(q, (querySnapshot) => setCompetitions(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
     }, []);
-    return (<div className="p-4 sm:p-6 lg:p-8"><main className="max-w-5xl mx-auto"><h1 className="text-3xl font-bold text-purple-400 mb-6">Admin Panel</h1><div className="bg-gray-800 p-6 rounded-lg"><h2 className="text-2xl font-bold mb-4">All Existing Competitions</h2><div className="space-y-3">{competitions.length > 0 ? competitions.map(comp => <div key={comp.id} className="bg-gray-900 p-3 rounded flex justify-between"><span>{comp.name}</span><span className="text-gray-400">by {comp.ownerName || 'N/A'}</span></div>) : <p>No competitions yet.</p>}</div></div></main></div>);
+    return (<div className="p-4 sm:p-6 lg:p-8"><main className="max-w-5xl mx-auto"><h1 className="text-3xl font-bold text-purple-400 mb-6">Admin Panel</h1><div className="glass-card p-6 rounded-lg"><h2 className="text-2xl font-bold text-white mb-4">All Existing Competitions</h2><div className="space-y-3">{competitions.length > 0 ? competitions.map(comp => <div key={comp.id} className="bg-black/20 p-3 rounded flex justify-between"><span>{comp.name}</span><span className="text-gray-400">by {comp.ownerName || 'N/A'}</span></div>) : <p>No competitions yet.</p>}</div></div></main></div>);
 };
 
 const InviteModal = ({ competition, currentUser, onClose }) => {
@@ -579,7 +578,7 @@ const InviteModal = ({ competition, currentUser, onClose }) => {
         setMessage(`Invitation sent to ${invitedUser.username}!`);
     };
 
-    return (<div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4"><div className="bg-gray-800 rounded-xl shadow-2xl max-w-md w-full border border-blue-500/50"><div className="p-6"><div className="flex justify-between items-center mb-4"><h3 className="text-2xl font-bold text-blue-400">Invite Players</h3><button onClick={onClose} className="text-gray-400 hover:text-white text-2xl">&times;</button></div><form onSubmit={handleSearch} className="flex space-x-2 mb-4"><input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Enter exact username..." className="flex-grow bg-gray-900 text-white p-2 rounded-md border border-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500" /><button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md" disabled={loading}>{loading ? '...' : 'Search'}</button></form><div className="space-y-2 h-48 overflow-y-auto">{searchResults.map(user => (<div key={user.id} className="flex justify-between items-center bg-gray-900 p-2 rounded-md"><span>{user.username}</span><button onClick={() => handleInvite(user)} className="bg-green-600 hover:bg-green-700 text-white text-sm py-1 px-2 rounded-md">Invite</button></div>))}</div>{message && <p className="text-center text-yellow-400 mt-4">{message}</p>}</div></div></div>);
+    return (<div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4"><div className="glass-card rounded-xl shadow-2xl max-w-md w-full"><div className="p-6"><div className="flex justify-between items-center mb-4"><h3 className="text-2xl font-bold text-white">Invite Players</h3><button onClick={onClose} className="text-gray-300 hover:text-white text-2xl">&times;</button></div><form onSubmit={handleSearch} className="flex space-x-2 mb-4"><input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Enter exact username..." className="flex-grow bg-black/20 text-white p-2 rounded-md border border-white/20 focus:outline-none focus:ring-2 focus:ring-primary" /><button type="submit" className="bg-primary hover:opacity-90 text-white font-bold py-2 px-4 rounded-md" disabled={loading}>{loading ? '...' : 'Search'}</button></form><div className="space-y-2 h-48 overflow-y-auto">{searchResults.map(user => (<div key={user.id} className="flex justify-between items-center bg-black/20 p-2 rounded-md"><span>{user.username}</span><button onClick={() => handleInvite(user)} className="bg-success hover:opacity-90 text-white text-sm py-1 px-2 rounded-md">Invite</button></div>))}</div>{message && <p className="text-center text-yellow-400 mt-4">{message}</p>}</div></div></div>);
 };
 
 const App = () => {
@@ -604,7 +603,7 @@ const App = () => {
     const handleNavigation = (newPage) => setPage(newPage);
 
     if (loading) {
-        return <div className="min-h-screen bg-gray-900 flex items-center justify-center text-white"><p>Loading App...</p></div>;
+        return <div className="min-h-screen flex items-center justify-center text-white"><p>Loading App...</p></div>;
     }
 
     if (!user) {
@@ -623,7 +622,7 @@ const App = () => {
     }
 
     return (
-        <div className="flex min-h-screen bg-gray-900 text-white">
+        <div className="flex min-h-screen text-white">
             <SideBar user={user} activeTab={page.name} onNavigate={handleNavigation} />
             <div className="flex-grow">
                 {renderPage()}
