@@ -19,7 +19,9 @@ import {
     addDoc,
     getDocs,
     where,
-    writeBatch
+    writeBatch,
+    collectionGroup,
+    getCountFromServer
 } from 'firebase/firestore';
 
 // --- Firebase Configuration ---
@@ -58,6 +60,40 @@ const LockIcon = ({ isPublic }) => {
             <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
             <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
         </svg>
+    );
+};
+
+const UsersIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400">
+        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+        <circle cx="9" cy="7" r="4"></circle>
+        <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+        <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+    </svg>
+);
+
+// --- Navigation Component ---
+const NavBar = ({ user, onNavigate }) => {
+    return (
+        <nav className="bg-gray-800/50 backdrop-blur-lg border-b border-gray-700 sticky top-0 z-40">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div className="flex items-center justify-between h-16">
+                    <div className="flex items-center">
+                        <span className="font-bold text-xl text-white cursor-pointer" onClick={() => onNavigate({ name: 'lobby' })}>
+                            Stock Game
+                        </span>
+                    </div>
+                    <div className="flex items-center space-x-4">
+                        <span className="text-gray-300">Welcome, {user.username || 'Player'}!</span>
+                        <button onClick={() => onNavigate({ name: 'create-competition'})} className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md transition">Create Competition</button>
+                        {user.role === 'admin' && (
+                            <button onClick={() => onNavigate({ name: 'admin' })} className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-md transition">Admin Panel</button>
+                        )}
+                        <button onClick={() => signOut(auth)} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-md transition">Logout</button>
+                    </div>
+                </div>
+            </div>
+        </nav>
     );
 };
 
@@ -106,9 +142,10 @@ const AuthPage = () => {
     );
 };
 
-const LobbyPage = ({ user, onSelectCompetition, onGoToAdmin, onGoToCreate }) => {
+const LobbyPage = ({ user, onSelectCompetition }) => {
     const [competitions, setCompetitions] = useState([]);
     const [userPortfolios, setUserPortfolios] = useState({});
+    const [competitionStats, setCompetitionStats] = useState({});
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -128,6 +165,15 @@ const LobbyPage = ({ user, onSelectCompetition, onGoToAdmin, onGoToCreate }) => 
             const uniqueComps = Array.from(new Set(allComps.map(c => c.id))).map(id => allComps.find(c => c.id === id));
 
             setCompetitions(uniqueComps);
+
+            // Fetch participant counts for each competition
+            const stats = {};
+            for (const comp of uniqueComps) {
+                const participantsRef = collection(db, 'competitions', comp.id, 'participants');
+                const snapshot = await getCountFromServer(participantsRef);
+                stats[comp.id] = snapshot.data().count;
+            }
+            setCompetitionStats(stats);
             setLoading(false);
         };
 
@@ -166,19 +212,10 @@ const LobbyPage = ({ user, onSelectCompetition, onGoToAdmin, onGoToCreate }) => 
     };
 
     return (
-        <div className="min-h-screen bg-gray-900 text-white p-4 sm:p-6 lg:p-8">
-            <header className="max-w-5xl mx-auto flex justify-between items-center mb-8">
-                <div><h1 className="text-3xl font-bold">Welcome, {user.username || 'Player'}!</h1><p className="text-gray-400">Choose a competition to join or create your own.</p></div>
-                <div className="flex items-center">
-                    <button onClick={onGoToCreate} className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md transition mr-4">Create Competition</button>
-                    {user.role === 'admin' && (
-                        <button onClick={onGoToAdmin} className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-md transition mr-4">Admin Panel</button>
-                    )}
-                    <button onClick={() => signOut(auth)} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-md transition">Logout</button>
-                </div>
-            </header>
+        <div className="p-4 sm:p-6 lg:p-8">
             <main className="max-w-5xl mx-auto">
-                {loading ? <p>Loading competitions...</p> : (
+                 <h1 className="text-3xl font-bold text-white mb-6">Competitions</h1>
+                {loading ? <p className="text-white">Loading competitions...</p> : (
                     competitions.length > 0 ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             {competitions.map(comp => (
@@ -190,10 +227,12 @@ const LobbyPage = ({ user, onSelectCompetition, onGoToAdmin, onGoToCreate }) => 
                                                 {comp.name}
                                             </h2>
                                         </div>
-                                        <p className="text-gray-400 mt-2 mb-4">{comp.description}</p>
+                                        <p className="text-gray-400 mt-2 mb-4 h-20 overflow-hidden">{comp.description}</p>
                                         <p className="text-sm text-gray-500">Created by: {comp.ownerName || 'Admin'}</p>
-                                        <p className="text-sm text-gray-500">Starts: {formatDate(comp.startDate)}</p>
-                                        <p className="text-sm text-gray-500">Ends: {formatDate(comp.endDate)}</p>
+                                        <div className="flex justify-between text-sm text-gray-500 mt-2">
+                                            <span>Starts: {formatDate(comp.startDate)}</span>
+                                            <span className="flex items-center gap-1"><UsersIcon /> {competitionStats[comp.id] || 0}</span>
+                                        </div>
                                         <p className="text-lg font-semibold mt-3">Starting Cash: {formatCurrency(comp.initialCash)}</p>
                                     </div>
                                     {userPortfolios[comp.id] ? (
@@ -324,11 +363,10 @@ const CompetitionPage = ({ user, competitionId, onExit }) => {
     const totalValue = portfolio.cash + portfolioValue;
 
     return (
-        <div className="min-h-screen bg-gray-900 text-white p-4 sm:p-6 lg:p-8">
+        <div className="p-4 sm:p-6 lg:p-8">
             <header className="max-w-7xl mx-auto mb-8">
                 <div className="flex justify-between items-center">
                     <h1 className="text-4xl font-bold text-indigo-400">{competition.name}</h1>
-                    <button onClick={onExit} className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-md transition"> &larr; Back to Lobby</button>
                 </div>
             </header>
             <main className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -362,6 +400,7 @@ const CompetitionPage = ({ user, competitionId, onExit }) => {
                         <h2 className="text-2xl font-bold mb-4">Competition Details</h2>
                         <div className="space-y-2 text-sm">
                             <div className="flex justify-between"><span>Owner:</span> <span className="font-semibold text-gray-300">{competition.ownerName}</span></div>
+                            <div className="flex justify-between"><span>Visibility:</span> <span className={`font-semibold ${competition.isPublic ? 'text-green-400' : 'text-yellow-400'}`}>{competition.isPublic ? 'Public' : 'Private'}</span></div>
                             <div className="flex justify-between"><span>Starting Cash:</span> <span className="font-semibold text-gray-300">{formatCurrency(competition.initialCash)}</span></div>
                             <div className="flex justify-between"><span>Ends:</span> <span className="font-semibold text-gray-300">{formatDate(competition.endDate)}</span></div>
                         </div>
@@ -407,7 +446,7 @@ const Stock = ({ symbol, data, portfolio, onTrade }) => {
     );
 };
 
-const CreateCompetitionPage = ({ user, onExit }) => {
+const CreateCompetitionPage = ({ user }) => {
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
     const [initialCash, setInitialCash] = useState(100000);
@@ -441,10 +480,8 @@ const CreateCompetitionPage = ({ user, onExit }) => {
                 return acc;
             }, {});
 
-            // Use a batch write to create the competition and join the owner simultaneously
             const batch = writeBatch(db);
 
-            // 1. Create the competition document
             const newCompRef = doc(collection(db, 'competitions'));
             batch.set(newCompRef, { 
                 name, 
@@ -458,7 +495,6 @@ const CreateCompetitionPage = ({ user, onExit }) => {
                 ownerName: user.username
             });
 
-            // 2. Create the participant document for the owner
             const participantRef = doc(db, 'competitions', newCompRef.id, 'participants', user.uid);
             batch.set(participantRef, {
                 cash: Number(initialCash),
@@ -467,10 +503,10 @@ const CreateCompetitionPage = ({ user, onExit }) => {
                 username: user.username
             });
 
-            // 3. Commit the batch
             await batch.commit();
             
-            onExit(); 
+            // This would ideally navigate back to the lobby, handled by the App component
+            window.location.reload(); // Simple way to refresh to the lobby
         } catch (err) {
             setError(err.message);
             setLoading(false);
@@ -478,12 +514,9 @@ const CreateCompetitionPage = ({ user, onExit }) => {
     };
 
     return (
-        <div className="min-h-screen bg-gray-900 text-white p-4 sm:p-6 lg:p-8">
-            <header className="max-w-3xl mx-auto flex justify-between items-center mb-8">
-                <h1 className="text-3xl font-bold text-green-400">Create Your Competition</h1>
-                <button onClick={onExit} className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-md transition">&larr; Back to Lobby</button>
-            </header>
+        <div className="p-4 sm:p-6 lg:p-8">
             <main className="max-w-3xl mx-auto">
+                <h1 className="text-3xl font-bold text-green-400 mb-6">Create Your Competition</h1>
                 <div className="bg-gray-800 p-6 rounded-lg border border-gray-700">
                     <form onSubmit={handleCreateCompetition}>
                         <div className="mb-4"><label className="block text-gray-400 mb-2">Competition Name</label><input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full bg-gray-900 p-2 rounded border border-gray-600" required /></div>
@@ -523,7 +556,7 @@ const CreateCompetitionPage = ({ user, onExit }) => {
     );
 };
 
-const AdminPage = ({ onExit }) => {
+const AdminPage = () => {
     const [competitions, setCompetitions] = useState([]);
     useEffect(() => {
         const q = query(collection(db, "competitions"));
@@ -534,14 +567,11 @@ const AdminPage = ({ onExit }) => {
     }, []);
 
     return (
-        <div className="min-h-screen bg-gray-900 text-white p-4 sm:p-6 lg:p-8">
-            <header className="max-w-5xl mx-auto flex justify-between items-center mb-8">
-                <h1 className="text-3xl font-bold text-purple-400">Admin Panel</h1>
-                <button onClick={onExit} className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-md transition">&larr; Back to Lobby</button>
-            </header>
+        <div className="p-4 sm:p-6 lg:p-8">
             <main className="max-w-5xl mx-auto">
+                 <h1 className="text-3xl font-bold text-purple-400 mb-6">Admin Panel</h1>
                 <div className="bg-gray-800 p-6 rounded-lg">
-                    <h2 className="text-2xl font-bold mb-4">Existing Competitions</h2>
+                    <h2 className="text-2xl font-bold mb-4">All Existing Competitions</h2>
                     <div className="space-y-3">
                         {competitions.length > 0 ? competitions.map(comp => 
                             <div key={comp.id} className="bg-gray-900 p-3 rounded flex justify-between">
@@ -579,6 +609,15 @@ const App = () => {
         return () => unsubscribe();
     }, []);
 
+    const handleNavigation = (newPage) => {
+        // A simple way to handle navigation after creation without full page reload
+        if (newPage.name === 'create-competition-success') {
+            setPage({ name: 'lobby' });
+        } else {
+            setPage(newPage);
+        }
+    };
+
     if (loading) {
         return <div className="bg-gray-900 min-h-screen flex items-center justify-center text-white"><p>Loading App...</p></div>;
     }
@@ -586,22 +625,29 @@ const App = () => {
     if (!user) {
         return <AuthPage />;
     }
-
-    switch (page.name) {
-        case 'admin':
-            return <AdminPage onExit={() => setPage({ name: 'lobby' })} />;
-        case 'create-competition':
-             return <CreateCompetitionPage user={user} onExit={() => setPage({ name: 'lobby' })} />;
-        case 'competition':
-            return <CompetitionPage user={user} competitionId={page.competitionId} onExit={() => setPage({ name: 'lobby' })} />;
-        default:
-            return <LobbyPage 
-                        user={user} 
-                        onSelectCompetition={(id) => setPage({ name: 'competition', competitionId: id })} 
-                        onGoToAdmin={() => setPage({ name: 'admin' })}
-                        onGoToCreate={() => setPage({ name: 'create-competition' })}
-                    />;
+    
+    const renderPage = () => {
+        switch (page.name) {
+            case 'admin':
+                return <AdminPage />;
+            case 'create-competition':
+                 return <CreateCompetitionPage user={user} onExit={() => handleNavigation({ name: 'lobby' })} />;
+            case 'competition':
+                return <CompetitionPage user={user} competitionId={page.competitionId} onExit={() => handleNavigation({ name: 'lobby' })} />;
+            default:
+                return <LobbyPage 
+                            user={user} 
+                            onSelectCompetition={(id) => handleNavigation({ name: 'competition', competitionId: id })} 
+                        />;
+        }
     }
+
+    return (
+        <div className="min-h-screen bg-gray-900">
+            <NavBar user={user} onNavigate={handleNavigation} />
+            {renderPage()}
+        </div>
+    );
 };
 
 export default App;
