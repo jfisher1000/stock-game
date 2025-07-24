@@ -523,7 +523,7 @@ const TradeModal = ({ user, competitionId, symbol, onClose }) => {
                             shares: newShares, 
                             avgCost: newAvgCost, 
                             totalCost: newTotalCost, 
-                            name: quote['2. name'],
+                            name: quote['2. name'] || symbol,
                             originalSymbol: symbol 
                         }
                     });
