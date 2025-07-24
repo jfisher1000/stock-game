@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
 import {
     getAuth,
@@ -20,9 +20,8 @@ import {
     serverTimestamp,
     writeBatch,
     runTransaction,
-    Timestamp,
 } from 'firebase/firestore';
-import { debouncedSearchSymbols, getQuote } from './api';
+import { searchSymbols, getQuote } from './api';
 
 
 // --- Firebase Configuration ---
@@ -43,10 +42,8 @@ const db = getFirestore(app);
 // --- Helper & Icon Components ---
 const formatDate = (ts) => ts ? new Date(ts.seconds * 1000).toLocaleDateString() : 'N/A';
 const formatCurrency = (amount) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
-const formatPercentage = (num) => `${(num * 100).toFixed(2)}%`;
 
 const Icon = ({ path, className = "w-6 h-6" }) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={path}></path></svg>;
-const HomeIcon = () => <Icon path="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />;
 const CompetitionsIcon = () => <Icon path="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />;
 const ExploreIcon = () => <Icon path="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />;
 const ProfileIcon = () => <Icon path="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />;
@@ -63,7 +60,6 @@ const TrendingDownIcon = () => <Icon className="w-4 h-4 text-red-500" path="M13 
 
 // --- Authentication Page Component ---
 const AuthPage = () => {
-    // ... (This component remains unchanged)
     const [isLogin, setIsLogin] = useState(true);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -113,7 +109,6 @@ const AuthPage = () => {
 // --- Competition & Page Components ---
 
 const CreateCompetitionModal = ({ user, onClose }) => {
-    // ... (This component remains unchanged)
     const [name, setName] = useState('');
     const [startingCash, setStartingCash] = useState(100000);
     const [isPublic, setIsPublic] = useState(true);
@@ -184,14 +179,12 @@ const CreateCompetitionModal = ({ user, onClose }) => {
 };
 
 const Leaderboard = ({ competitionId }) => {
-    // ... (This component remains unchanged)
     const [participants, setParticipants] = useState([]);
 
     useEffect(() => {
         const q = query(collection(db, 'competitions', competitionId, 'participants'));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const fetchedParticipants = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            // Sort client-side
             fetchedParticipants.sort((a, b) => b.portfolioValue - a.portfolioValue);
             setParticipants(fetchedParticipants);
         });
@@ -226,7 +219,6 @@ const Leaderboard = ({ competitionId }) => {
 };
 
 const MyCompetitionsPage = ({ user, onSelectCompetition }) => {
-    // ... (This component remains unchanged)
     const [competitions, setCompetitions] = useState([]);
     const [loading, setLoading] = useState(true);
 
@@ -257,7 +249,6 @@ const MyCompetitionsPage = ({ user, onSelectCompetition }) => {
 };
 
 const CompetitionCard = ({ competition, onClick }) => {
-    // This component is updated to be a button for better click handling
     return (
         <button 
             onClick={onClick} 
@@ -278,7 +269,6 @@ const CompetitionCard = ({ competition, onClick }) => {
 };
 
 const ExplorePage = ({ user }) => {
-    // ... (This component remains unchanged, but we add holdings to the join action)
     const [competitions, setCompetitions] = useState([]);
     const [loading, setLoading] = useState(true);
 
@@ -304,7 +294,7 @@ const ExplorePage = ({ user }) => {
             portfolioValue: comp.startingCash,
             cash: comp.startingCash,
             joinedAt: serverTimestamp(),
-            holdings: {} // Initialize holdings
+            holdings: {}
         });
         
         const competitionRef = doc(db, 'competitions', comp.id);
@@ -351,7 +341,7 @@ const ExplorePage = ({ user }) => {
     );
 };
 
-// --- NEW Trading & Portfolio Components ---
+// --- Trading & Portfolio Components ---
 
 const PortfolioView = ({ participantData, onTrade }) => {
     if (!participantData) return <div className="glass-card p-6 rounded-lg mt-6"><p>Loading portfolio...</p></div>;
@@ -402,20 +392,25 @@ const StockSearchView = ({ onSelectStock }) => {
     const [results, setResults] = useState([]);
     const [loading, setLoading] = useState(false);
 
-    const handleSearch = useCallback(async (term) => {
-        if (term) {
-            setLoading(true);
-            const searchResults = await debouncedSearchSymbols(term);
-            setResults(searchResults);
-            setLoading(false);
-        } else {
-            setResults([]);
-        }
-    }, []);
-
     useEffect(() => {
-        handleSearch(searchTerm);
-    }, [searchTerm, handleSearch]);
+        if (!searchTerm.trim()) {
+            setResults([]);
+            setLoading(false);
+            return;
+        }
+
+        setLoading(true);
+        const timerId = setTimeout(() => {
+            searchSymbols(searchTerm).then(searchResults => {
+                setResults(searchResults || []);
+                setLoading(false);
+            });
+        }, 500);
+
+        return () => {
+            clearTimeout(timerId);
+        };
+    }, [searchTerm]);
 
     return (
         <div className="glass-card p-6 rounded-lg mt-6">
@@ -436,7 +431,11 @@ const StockSearchView = ({ onSelectStock }) => {
                     {results.map(result => (
                         <li
                             key={result['1. symbol']}
-                            onClick={() => onSelectStock(result['1. symbol'])}
+                            onClick={() => {
+                                onSelectStock(result['1. symbol']);
+                                setSearchTerm('');
+                                setResults([]);
+                            }}
                             className="p-3 hover:bg-white/10 rounded-md cursor-pointer flex justify-between"
                         >
                             <span>
@@ -448,6 +447,9 @@ const StockSearchView = ({ onSelectStock }) => {
                     ))}
                 </ul>
             )}
+            {!loading && searchTerm && results.length === 0 && (
+                 <p className="text-center text-gray-400 mt-4">No results found for "{searchTerm}".</p>
+            )}
         </div>
     );
 };
@@ -455,7 +457,7 @@ const StockSearchView = ({ onSelectStock }) => {
 const TradeModal = ({ user, competitionId, symbol, onClose }) => {
     const [quote, setQuote] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [tradeType, setTradeType] = useState('buy'); // 'buy' or 'sell'
+    const [tradeType, setTradeType] = useState('buy');
     const [shares, setShares] = useState(1);
     const [error, setError] = useState('');
     const [processing, setProcessing] = useState(false);
@@ -471,7 +473,7 @@ const TradeModal = ({ user, competitionId, symbol, onClose }) => {
     }, [symbol]);
 
     const handleTrade = async () => {
-        if (shares <= 0) {
+        if (!shares || shares <= 0) {
             setError('Please enter a positive number of shares.');
             return;
         }
@@ -486,7 +488,7 @@ const TradeModal = ({ user, competitionId, symbol, onClose }) => {
             await runTransaction(db, async (transaction) => {
                 const participantDoc = await transaction.get(participantRef);
                 if (!participantDoc.exists()) {
-                    throw "Participant document does not exist!";
+                    throw new Error("Participant document does not exist!");
                 }
 
                 const data = participantDoc.data();
@@ -495,7 +497,7 @@ const TradeModal = ({ user, competitionId, symbol, onClose }) => {
 
                 if (tradeType === 'buy') {
                     if (currentCash < totalCost) {
-                        throw "Not enough cash to complete this purchase.";
+                        throw new Error("Not enough cash to complete this purchase.");
                     }
                     const newCash = currentCash - totalCost;
                     const existingShares = currentHoldings[symbol]?.shares || 0;
@@ -513,7 +515,7 @@ const TradeModal = ({ user, competitionId, symbol, onClose }) => {
                 } else { // Sell
                     const existingShares = currentHoldings[symbol]?.shares || 0;
                     if (shares > existingShares) {
-                        throw "You don't own enough shares to sell.";
+                        throw new Error("You don't own enough shares to sell.");
                     }
                     const newCash = currentCash + totalCost;
                     const newShares = existingShares - shares;
@@ -525,7 +527,7 @@ const TradeModal = ({ user, competitionId, symbol, onClose }) => {
                     } else {
                         const existingTotalCost = currentHoldings[symbol].totalCost;
                         const avgCost = currentHoldings[symbol].avgCost;
-                        const newTotalCost = existingTotalCost - (shares * avgCost); // Reduce total cost based on avg cost
+                        const newTotalCost = existingTotalCost - (shares * avgCost);
                         transaction.update(participantRef, {
                             cash: newCash,
                             [`holdings.${symbol}.shares`]: newShares,
@@ -534,10 +536,10 @@ const TradeModal = ({ user, competitionId, symbol, onClose }) => {
                     }
                 }
             });
-            onClose(); // Close modal on success
+            onClose();
         } catch (e) {
             console.error("Transaction failed: ", e);
-            setError(e.toString());
+            setError(e.message);
         }
         setProcessing(false);
     };
@@ -566,7 +568,7 @@ const TradeModal = ({ user, competitionId, symbol, onClose }) => {
                         </div>
                         <div className="mb-4">
                             <label className="block mb-2">Shares</label>
-                            <input type="number" min="1" value={shares} onChange={e => setShares(parseInt(e.target.value, 10))} className="w-full bg-black/20 p-3 rounded-md border border-white/20" />
+                            <input type="number" min="1" value={shares} onChange={e => setShares(parseInt(e.target.value, 10) || 0)} className="w-full bg-black/20 p-3 rounded-md border border-white/20" />
                         </div>
                         <div className="text-lg font-bold mb-4">
                             Total: {formatCurrency(shares * currentPrice)}
@@ -650,7 +652,6 @@ const AdminPage = () => <div className="p-8 text-white"><h1 className="text-4xl 
 
 // --- Navigation Components ---
 const SideBar = ({ user, activeTab, onNavigate }) => {
-    // ... (This component remains unchanged)
     const NavItem = ({ icon, label, name }) => (
         <li onClick={() => onNavigate(name)} className={`flex items-center p-3 my-1 rounded-lg cursor-pointer transition-colors ${activeTab === name ? 'bg-primary text-white' : 'text-gray-300 hover:bg-white/10'}`}>
             {icon}
@@ -691,8 +692,6 @@ function App() {
                 if (userDoc.exists()) {
                     setUser({ uid: firebaseUser.uid, ...userDoc.data() });
                 } else {
-                    // This case is for users who authenticated but might not have a user doc yet.
-                    // A default profile is created.
                     const defaultUserData = { uid: firebaseUser.uid, email: firebaseUser.email, username: 'New Player', role: 'player' };
                     await setDoc(userDocRef, defaultUserData);
                     setUser(defaultUserData);
@@ -707,7 +706,7 @@ function App() {
     
     const handleNavigation = (tab) => {
         setActiveTab(tab);
-        setSelectedCompetitionId(null); // Reset selected competition when changing tabs
+        setSelectedCompetitionId(null);
     }
 
     const renderContent = () => {
