@@ -19,6 +19,9 @@ import {
     writeBatch,
     runTransaction,
     Timestamp,
+    getDocs,
+    deleteDoc,
+    collectionGroup, // Import collectionGroup for querying subcollections
 } from 'firebase/firestore';
 import { searchSymbols, getQuote } from './api';
 
@@ -55,6 +58,8 @@ const SearchIcon = () => <Icon path="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z
 const TrendingUpIcon = () => <Icon className="w-4 h-4 text-green-500" path="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />;
 const TrendingDownIcon = () => <Icon className="w-4 h-4 text-red-500" path="M13 17h8m0 0v-8m0 8l-8-8-4 4-6-6" />;
 const CalendarIcon = () => <Icon className="w-4 h-4 text-gray-400" path="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />;
+const UserAddIcon = () => <Icon path="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />;
+const MailIcon = () => <Icon path="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />;
 
 
 // --- Authentication Page Component ---
@@ -105,6 +110,185 @@ const AuthPage = () => {
     );
 };
 
+// --- NEW: Invitation Components ---
+
+const InviteModal = ({ user, competition, onClose }) => {
+    const [searchTerm, setSearchTerm] = useState('');
+    const [results, setResults] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+    const [invited, setInvited] = useState([]);
+
+    const handleSearch = async () => {
+        if (searchTerm.length < 3) {
+            setError('Search term must be at least 3 characters.');
+            setResults([]);
+            return;
+        }
+        setLoading(true);
+        setError('');
+        try {
+            const q = query(collection(db, 'users'), where('username', '>=', searchTerm), where('username', '<=', searchTerm + '\uf8ff'));
+            const querySnapshot = await getDocs(q);
+            const users = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+                .filter(u => u.id !== user.uid && !competition.participantIds.includes(u.id)); // Exclude self and existing participants
+            setResults(users);
+        } catch (err) {
+            setError('Failed to search for users.');
+            console.error(err);
+        }
+        setLoading(false);
+    };
+
+    const handleInvite = async (invitedUser) => {
+        setError('');
+        try {
+            const inviteRef = doc(db, 'competitions', competition.id, 'invitations', invitedUser.id);
+            await setDoc(inviteRef, {
+                competitionId: competition.id,
+                competitionName: competition.name,
+                invitedByUsername: user.username,
+                invitedByUid: user.uid,
+                invitedUsername: invitedUser.username,
+                invitedAt: serverTimestamp()
+            });
+            setInvited([...invited, invitedUser.id]); // Keep track of who has been invited in this session
+        } catch (err) {
+            setError(`Failed to invite ${invitedUser.username}. They may have already been invited.`);
+            console.error(err);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="glass-card p-8 rounded-lg w-full max-w-md text-white">
+                <h2 className="text-2xl font-bold mb-4">Invite Players to {competition.name}</h2>
+                <div className="flex gap-2 mb-4">
+                    <input
+                        type="text"
+                        placeholder="Search by username"
+                        value={searchTerm}
+                        onChange={e => setSearchTerm(e.target.value)}
+                        className="w-full bg-black/20 p-3 rounded-md border border-white/20"
+                    />
+                    <button onClick={handleSearch} disabled={loading} className="py-2 px-4 rounded-md bg-primary hover:opacity-90 disabled:opacity-50">
+                        {loading ? '...' : <SearchIcon />}
+                    </button>
+                </div>
+                {error && <p className="text-danger mb-4">{error}</p>}
+                <div className="max-h-60 overflow-y-auto">
+                    {results.map(u => (
+                        <div key={u.id} className="flex justify-between items-center p-2 hover:bg-white/10 rounded-md">
+                            <span>{u.username}</span>
+                            <button
+                                onClick={() => handleInvite(u)}
+                                disabled={invited.includes(u.id)}
+                                className="bg-primary/50 text-xs py-1 px-2 rounded hover:bg-primary disabled:bg-gray-500"
+                            >
+                                {invited.includes(u.id) ? 'Invited' : 'Invite'}
+                            </button>
+                        </div>
+                    ))}
+                    {!loading && results.length === 0 && searchTerm.length >= 3 && <p className="text-gray-400 text-center p-4">No users found.</p>}
+                </div>
+                <div className="flex justify-end mt-6">
+                    <button type="button" onClick={onClose} className="py-2 px-4 rounded-md hover:bg-white/10">Close</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const PendingInvitations = ({ user }) => {
+    const [invitations, setInvitations] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        if (!user) return;
+        // This query requires a Firestore index. The console will provide a link to create it.
+        const q = query(collectionGroup(db, 'invitations'), where('__name__', '>', `competitions/ /invitations/${user.uid}`), where('__name__', '<', `competitions/~/invitations/${user.uid}`));
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const fetchedInvites = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setInvitations(fetchedInvites);
+            setLoading(false);
+        }, err => {
+            console.error("Error fetching invitations. You may need to create a composite index in Firestore.", err);
+            setLoading(false);
+        });
+
+        return () => unsubscribe();
+    }, [user]);
+
+    const handleAccept = async (invite) => {
+        try {
+            const competitionDoc = await getDoc(doc(db, 'competitions', invite.competitionId));
+            if (!competitionDoc.exists()) throw new Error("Competition not found.");
+            
+            const comp = competitionDoc.data();
+            const batch = writeBatch(db);
+
+            // Add to participants subcollection
+            const participantRef = doc(db, 'competitions', invite.competitionId, 'participants', user.uid);
+            batch.set(participantRef, {
+                username: user.username,
+                portfolioValue: comp.startingCash,
+                cash: comp.startingCash,
+                joinedAt: serverTimestamp(),
+                holdings: {}
+            });
+
+            // Update participantIds array on competition doc
+            const competitionRef = doc(db, 'competitions', invite.competitionId);
+            batch.update(competitionRef, {
+                participantIds: [...(comp.participantIds || []), user.uid]
+            });
+
+            // Delete the invitation
+            const inviteRef = doc(db, 'competitions', invite.competitionId, 'invitations', user.uid);
+            batch.delete(inviteRef);
+
+            await batch.commit();
+        } catch (error) {
+            console.error("Error accepting invite: ", error);
+            alert("Failed to accept invite.");
+        }
+    };
+
+    const handleDecline = async (invite) => {
+        try {
+            const inviteRef = doc(db, 'competitions', invite.competitionId, 'invitations', user.uid);
+            await deleteDoc(inviteRef);
+        } catch (error) {
+            console.error("Error declining invite: ", error);
+            alert("Failed to decline invite.");
+        }
+    };
+
+    if (loading || invitations.length === 0) return null;
+
+    return (
+        <div className="p-8 pt-0">
+            <h2 className="text-2xl font-bold mb-4 text-white flex items-center gap-2"><MailIcon /> Pending Invitations</h2>
+            <div className="space-y-4">
+                {invitations.map(invite => (
+                    <div key={invite.id} className="glass-card p-4 rounded-lg flex justify-between items-center">
+                        <div>
+                            <p className="font-bold">{invite.competitionName}</p>
+                            <p className="text-sm text-gray-300">Invited by {invite.invitedByUsername}</p>
+                        </div>
+                        <div className="flex gap-2">
+                            <button onClick={() => handleAccept(invite)} className="bg-success text-white font-bold py-1 px-3 rounded-md text-sm">Accept</button>
+                            <button onClick={() => handleDecline(invite)} className="bg-danger text-white font-bold py-1 px-3 rounded-md text-sm">Decline</button>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+
 // --- Competition & Page Components ---
 
 const CreateCompetitionModal = ({ user, onClose }) => {
@@ -125,7 +309,6 @@ const CreateCompetitionModal = ({ user, onClose }) => {
         }
         setLoading(true);
 
-        // Calculate end date
         const start = new Date(startDate);
         const end = new Date(start);
         if (durationType === 'Days') {
@@ -161,7 +344,7 @@ const CreateCompetitionModal = ({ user, onClose }) => {
                 portfolioValue: startingCash,
                 cash: startingCash,
                 joinedAt: serverTimestamp(),
-                holdings: {} // Initialize holdings
+                holdings: {}
             });
 
             onClose();
@@ -274,7 +457,8 @@ const MyCompetitionsPage = ({ user, onSelectCompetition }) => {
 
     return (
         <div className="p-8 text-white">
-            <h1 className="text-4xl font-bold mb-6">My Competitions</h1>
+            <PendingInvitations user={user} />
+            <h1 className="text-4xl font-bold mb-6 mt-8">My Competitions</h1>
             {competitions.length === 0 ? (
                 <p>You haven't joined any competitions yet. Go to Explore to find one!</p>
             ) : (
@@ -298,7 +482,8 @@ const CompetitionCard = ({ competition, onClick }) => {
                 <span className={`text-xs font-bold px-2 py-1 rounded-full ${status.color}`}>{status.text}</span>
             </div>
             <div className="flex-grow">
-                <p className="text-gray-400">Created by {competition.ownerName}</p>
+                {/* UPDATED: "Created by" changed to "Owner" */}
+                <p className="text-gray-400">Owner: {competition.ownerName}</p>
                 <p className="text-gray-400">Starts with {formatCurrency(competition.startingCash)}</p>
             </div>
             <div className="mt-4 space-y-2">
@@ -665,6 +850,7 @@ const CompetitionDetailPage = ({ user, competitionId, onBack }) => {
     const [participantData, setParticipantData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [tradeModalSymbol, setTradeModalSymbol] = useState(null);
+    const [isInviteModalOpen, setInviteModalOpen] = useState(false); // NEW: State for invite modal
 
     useEffect(() => {
         const compRef = doc(db, 'competitions', competitionId);
@@ -694,7 +880,6 @@ const CompetitionDetailPage = ({ user, competitionId, onBack }) => {
         if (status.text !== 'Active') return;
 
         const updatePortfolioValue = async () => {
-            // This function now uses the participantData from state, so it's always up-to-date
             const { holdings, cash, portfolioValue: currentPortfolioValue } = participantData;
             const participantRef = doc(db, 'competitions', competitionId, 'participants', user.uid);
 
@@ -730,10 +915,10 @@ const CompetitionDetailPage = ({ user, competitionId, onBack }) => {
         };
         
         updatePortfolioValue();
-        const intervalId = setInterval(updatePortfolioValue, 10000); // 10 seconds
+        const intervalId = setInterval(updatePortfolioValue, 10000); 
 
         return () => clearInterval(intervalId);
-    }, [competition, participantData, competitionId, user.uid]); // Added participantData to dependency array
+    }, [competition, participantData, competitionId, user.uid]); 
 
 
     if (loading) return <p className="p-8 text-white">Loading competition details...</p>;
@@ -741,6 +926,8 @@ const CompetitionDetailPage = ({ user, competitionId, onBack }) => {
 
     const status = getCompetitionStatus(competition.startDate, competition.endDate);
     const isTradingActive = status.text === 'Active';
+    // NEW: Determine if user can invite
+    const canInvite = competition.isPublic || competition.ownerId === user.uid;
 
     return (
         <div className="p-8 text-white">
@@ -752,13 +939,31 @@ const CompetitionDetailPage = ({ user, competitionId, onBack }) => {
                     onClose={() => setTradeModalSymbol(null)} 
                 />
             )}
-            <button onClick={onBack} className="mb-6 text-primary hover:underline">{'< Back to My Competitions'}</button>
+            {/* NEW: Render Invite Modal */}
+            {isInviteModalOpen && (
+                <InviteModal 
+                    user={user}
+                    competition={competition}
+                    onClose={() => setInviteModalOpen(false)}
+                />
+            )}
+            <div className="flex justify-between items-center mb-6">
+                 <button onClick={onBack} className="text-primary hover:underline">{'< Back to My Competitions'}</button>
+                 {/* NEW: Show invite button if user has permission */}
+                 {canInvite && (
+                     <button onClick={() => setInviteModalOpen(true)} className="bg-primary/80 hover:bg-primary text-white font-bold py-2 px-4 rounded-md flex items-center gap-2">
+                        <UserAddIcon /> Invite Players
+                    </button>
+                 )}
+            </div>
+            
             <div className="flex items-center gap-4">
                 <h1 className="text-4xl font-bold">{competition.name}</h1>
                 <span className={`text-lg font-bold px-3 py-1 rounded-full ${status.color}`}>{status.text}</span>
             </div>
             <p className="text-gray-400 mt-2">
-                {formatDate(competition.startDate)} to {formatDate(competition.endDate)} • Created by {competition.ownerName}
+                {/* UPDATED: "Created by" changed to "Owner" */}
+                {formatDate(competition.startDate)} to {formatDate(competition.endDate)} • Owner: {competition.ownerName}
             </p>
             
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-6">
@@ -780,23 +985,19 @@ const AdminPage = () => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        // Calculate the timestamp for 2 hours ago
         const twoHoursAgo = new Date();
         twoHoursAgo.setHours(twoHoursAgo.getHours() - 2);
         const twoHoursAgoTimestamp = Timestamp.fromDate(twoHoursAgo);
 
-        // Query for logs within the last 2 hours
         const q = query(collection(db, 'api_logs'), where('timestamp', '>=', twoHoursAgoTimestamp));
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const totalCalls = snapshot.size;
-            
-            // Calculate average per minute over the 2-hour (120 minutes) window
             const avg = totalCalls / 120;
 
             setApiStats({
                 total: totalCalls,
-                avgPerMinute: avg.toFixed(2) // Format to 2 decimal places
+                avgPerMinute: avg.toFixed(2)
             });
             setLoading(false);
         }, (error) => {
@@ -804,7 +1005,6 @@ const AdminPage = () => {
             setLoading(false);
         });
 
-        // Cleanup the listener when the component unmounts
         return () => unsubscribe();
     }, []);
 
@@ -828,7 +1028,6 @@ const AdminPage = () => {
                         </div>
                     )}
                 </div>
-                 {/* Placeholder for future stats */}
                 <div className="glass-card p-6 rounded-lg">
                      <h2 className="text-2xl font-bold mb-4">Other Stats</h2>
                      <p className="text-gray-400">More analytics coming soon...</p>
