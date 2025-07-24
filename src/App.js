@@ -348,14 +348,14 @@ const ExplorePage = ({ user }) => {
 const PortfolioView = ({ participantData, onTrade }) => {
     if (!participantData) return <div className="glass-card p-6 rounded-lg mt-6"><p>Loading portfolio...</p></div>;
 
-    const { cash, holdings } = participantData;
+    const { cash, holdings, portfolioValue } = participantData;
 
     return (
         <div className="glass-card p-6 rounded-lg mt-6">
-            <h3 className="text-xl font-semibold mb-4">My Portfolio</h3>
+            <h3 className="text-xl font-semibold mb-2">My Portfolio</h3>
             <div className="mb-4">
-                <span className="text-gray-400">Cash Balance:</span>
-                <span className="text-2xl font-bold ml-2">{formatCurrency(cash)}</span>
+                <span className="text-3xl font-bold">{formatCurrency(portfolioValue)}</span>
+                <p className="text-gray-400 text-sm">Cash: {formatCurrency(cash)}</p>
             </div>
             <table className="w-full text-left">
                 <thead className="border-b border-white/10">
@@ -424,6 +424,7 @@ const StockSearchView = ({ onSelectStock }) => {
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="w-full bg-black/20 p-3 pl-10 rounded-md border border-white/20"
+                    spellCheck="false"
                 />
                 <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><SearchIcon /></div>
             </div>
@@ -444,7 +445,6 @@ const StockSearchView = ({ onSelectStock }) => {
                                 <span className="font-bold">{result['1. symbol']}</span>
                                 <span className="text-gray-400 ml-2">{result['2. name']}</span>
                             </span>
-                            <span className="text-gray-500">{result['4. region']}</span>
                         </li>
                     ))}
                 </ul>
