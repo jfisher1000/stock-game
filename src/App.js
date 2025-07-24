@@ -20,6 +20,7 @@ import {
     serverTimestamp,
     writeBatch,
     runTransaction,
+    Timestamp,
 } from 'firebase/firestore';
 import { searchSymbols, getQuote } from './api';
 
@@ -44,6 +45,18 @@ const formatDate = (ts) => ts ? new Date(ts.seconds * 1000).toLocaleDateString()
 const formatCurrency = (amount) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
 const sanitizeSymbolForFirestore = (symbol) => symbol.replace(/\./g, '_');
 
+const getCompetitionStatus = (startDate, endDate) => {
+    const now = new Date();
+    const start = startDate ? startDate.toDate() : null;
+    const end = endDate ? endDate.toDate() : null;
+
+    if (!start || !end) return { text: 'Invalid Dates', color: 'bg-gray-500' };
+
+    if (now < start) return { text: 'Upcoming', color: 'bg-blue-500' };
+    if (now > end) return { text: 'Ended', color: 'bg-red-700' };
+    return { text: 'Active', color: 'bg-green-500' };
+};
+
 
 const Icon = ({ path, className = "w-6 h-6" }) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={path}></path></svg>;
 const CompetitionsIcon = () => <Icon path="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />;
@@ -58,6 +71,7 @@ const UsersIcon = () => <Icon className="w-4 h-4 text-gray-400" path="M17 21v-2a
 const SearchIcon = () => <Icon path="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />;
 const TrendingUpIcon = () => <Icon className="w-4 h-4 text-green-500" path="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />;
 const TrendingDownIcon = () => <Icon className="w-4 h-4 text-red-500" path="M13 17h8m0 0v-8m0 8l-8-8-4 4-6-6" />;
+const CalendarIcon = () => <Icon className="w-4 h-4 text-gray-400" path="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />;
 
 
 // --- Authentication Page Component ---
@@ -114,6 +128,9 @@ const CreateCompetitionModal = ({ user, onClose }) => {
     const [name, setName] = useState('');
     const [startingCash, setStartingCash] = useState(100000);
     const [isPublic, setIsPublic] = useState(true);
+    const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+    const [durationNumber, setDurationNumber] = useState(2);
+    const [durationType, setDurationType] = useState('Weeks');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
 
@@ -124,6 +141,24 @@ const CreateCompetitionModal = ({ user, onClose }) => {
             return;
         }
         setLoading(true);
+
+        // Calculate end date
+        const start = new Date(startDate);
+        const end = new Date(start);
+        if (durationType === 'Days') {
+            end.setDate(start.getDate() + durationNumber);
+        } else if (durationType === 'Weeks') {
+            end.setDate(start.getDate() + durationNumber * 7);
+        } else if (durationType === 'Months') {
+            end.setMonth(start.getMonth() + durationNumber);
+        } else if (durationType === 'Years') {
+            end.setFullYear(start.getFullYear() + durationNumber);
+        }
+        
+        const startDateTimestamp = Timestamp.fromDate(start);
+        const endDateTimestamp = Timestamp.fromDate(end);
+
+
         try {
             const competitionRef = await addDoc(collection(db, 'competitions'), {
                 name,
@@ -132,6 +167,8 @@ const CreateCompetitionModal = ({ user, onClose }) => {
                 ownerId: user.uid,
                 ownerName: user.username,
                 createdAt: serverTimestamp(),
+                startDate: startDateTimestamp,
+                endDate: endDateTimestamp,
                 participantIds: [user.uid]
             });
 
@@ -153,19 +190,35 @@ const CreateCompetitionModal = ({ user, onClose }) => {
     };
 
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="glass-card p-8 rounded-lg w-full max-w-md text-white">
-                <h2 className="text-2xl font-bold mb-4">Create New Competition</h2>
+                <h2 className="text-2xl font-bold mb-6">Create New Competition</h2>
                 <form onSubmit={handleCreate}>
                     <div className="mb-4">
                         <label className="block mb-2">Competition Name</label>
-                        <input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full bg-black/20 p-3 rounded-md border border-white/20" />
+                        <input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full bg-black/20 p-3 rounded-md border border-white/20" required/>
                     </div>
                     <div className="mb-4">
                         <label className="block mb-2">Starting Cash</label>
                         <input type="number" value={startingCash} onChange={e => setStartingCash(Number(e.target.value))} className="w-full bg-black/20 p-3 rounded-md border border-white/20" />
                     </div>
-                    <div className="mb-4 flex items-center">
+                     <div className="mb-4">
+                        <label className="block mb-2">Start Date</label>
+                        <input type="date" value={startDate} min={new Date().toISOString().split('T')[0]} onChange={e => setStartDate(e.target.value)} className="w-full bg-black/20 p-3 rounded-md border border-white/20" />
+                    </div>
+                    <div className="mb-4">
+                        <label className="block mb-2">Duration</label>
+                        <div className="flex gap-2">
+                            <input type="number" value={durationNumber} min="1" onChange={e => setDurationNumber(Number(e.target.value))} className="w-1/3 bg-black/20 p-3 rounded-md border border-white/20" />
+                            <select value={durationType} onChange={e => setDurationType(e.target.value)} className="w-2/3 bg-black/20 p-3 rounded-md border border-white/20">
+                                <option>Days</option>
+                                <option>Weeks</option>
+                                <option>Months</option>
+                                <option>Years</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div className="mb-6 flex items-center">
                         <input type="checkbox" id="isPublic" checked={isPublic} onChange={e => setIsPublic(e.target.checked)} className="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded" />
                         <label htmlFor="isPublic" className="ml-2">Publicly visible</label>
                     </div>
@@ -251,20 +304,31 @@ const MyCompetitionsPage = ({ user, onSelectCompetition }) => {
 };
 
 const CompetitionCard = ({ competition, onClick }) => {
+    const status = getCompetitionStatus(competition.startDate, competition.endDate);
     return (
         <button 
             onClick={onClick} 
-            className="glass-card p-6 rounded-lg cursor-pointer hover:border-primary/50 border border-transparent transition-all text-left w-full"
+            className="glass-card p-6 rounded-lg cursor-pointer hover:border-primary/50 border border-transparent transition-all text-left w-full flex flex-col"
         >
             <div className="flex justify-between items-start">
-                <h3 className="text-xl font-bold">{competition.name}</h3>
-                {competition.isPublic ? <LockOpenIcon /> : <LockClosedIcon />}
+                <h3 className="text-xl font-bold mb-2">{competition.name}</h3>
+                <span className={`text-xs font-bold px-2 py-1 rounded-full ${status.color}`}>{status.text}</span>
             </div>
-            <p className="text-gray-400 mt-2">Created by {competition.ownerName}</p>
-            <p className="text-gray-400">Starts with {formatCurrency(competition.startingCash)}</p>
-            <div className="flex items-center mt-4 text-gray-400">
-                <UsersIcon />
-                <span className="ml-2">{(competition.participantIds || []).length} players</span>
+            <div className="flex-grow">
+                <p className="text-gray-400">Created by {competition.ownerName}</p>
+                <p className="text-gray-400">Starts with {formatCurrency(competition.startingCash)}</p>
+            </div>
+            <div className="mt-4 space-y-2">
+                 <div className="flex items-center text-gray-300 text-sm">
+                    <CalendarIcon />
+                    <span className="ml-2">
+                        {formatDate(competition.startDate)} - {formatDate(competition.endDate)}
+                    </span>
+                </div>
+                <div className="flex items-center text-gray-300 text-sm">
+                    <UsersIcon />
+                    <span className="ml-2">{(competition.participantIds || []).length} players</span>
+                </div>
             </div>
         </button>
     );
@@ -277,7 +341,10 @@ const ExplorePage = ({ user }) => {
     useEffect(() => {
         const q = query(collection(db, 'competitions'), where('isPublic', '==', true));
         const unsubscribe = onSnapshot(q, (snapshot) => {
-            setCompetitions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+            const upcominAndActive = snapshot.docs
+                .map(doc => ({ id: doc.id, ...doc.data() }))
+                .filter(comp => getCompetitionStatus(comp.startDate, comp.endDate).text !== 'Ended');
+            setCompetitions(upcominAndActive);
             setLoading(false);
         });
         return () => unsubscribe();
@@ -321,15 +388,7 @@ const ExplorePage = ({ user }) => {
              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {competitions.map(comp => (
                     <div key={comp.id} className="glass-card p-6 rounded-lg flex flex-col">
-                        <div className="flex-grow">
-                            <h3 className="text-xl font-bold">{comp.name}</h3>
-                            <p className="text-gray-400 mt-2">Created by {comp.ownerName}</p>
-                            <p className="text-gray-400">Starts with {formatCurrency(comp.startingCash)}</p>
-                            <div className="flex items-center mt-4 text-gray-400">
-                                <UsersIcon />
-                                <span className="ml-2">{(comp.participantIds || []).length} players</span>
-                            </div>
-                        </div>
+                        <CompetitionCard competition={comp} onClick={() => {}} />
                         <button 
                             onClick={() => handleJoin(comp)}
                             disabled={(comp.participantIds || []).includes(user.uid)}
@@ -389,13 +448,13 @@ const PortfolioView = ({ participantData, onTrade }) => {
     );
 };
 
-const StockSearchView = ({ onSelectStock }) => {
+const StockSearchView = ({ onSelectStock, isTradingActive }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [results, setResults] = useState([]);
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
-        if (!searchTerm.trim()) {
+        if (!isTradingActive || !searchTerm.trim()) {
             setResults([]);
             setLoading(false);
             return;
@@ -412,7 +471,16 @@ const StockSearchView = ({ onSelectStock }) => {
         return () => {
             clearTimeout(timerId);
         };
-    }, [searchTerm]);
+    }, [searchTerm, isTradingActive]);
+
+    if (!isTradingActive) {
+        return (
+            <div className="glass-card p-6 rounded-lg mt-6 text-center">
+                <h3 className="text-xl font-semibold mb-2">Search & Trade</h3>
+                <p className="text-gray-400">Trading is not active for this competition.</p>
+            </div>
+        )
+    }
 
     return (
         <div className="glass-card p-6 rounded-lg mt-6">
@@ -516,7 +584,6 @@ const TradeModal = ({ user, competitionId, symbol, onClose }) => {
                     const newTotalCost = existingHolding.totalCost + totalCost;
                     const newAvgCost = newTotalCost / newShares;
                     
-                    // On a buy, portfolio value does not change, as cash is exchanged for an asset of equal value.
                     transaction.update(participantRef, {
                         cash: newCash,
                         [`holdings.${sanitizedSymbol}`]: { 
@@ -638,16 +705,16 @@ const CompetitionDetailPage = ({ user, competitionId, onBack }) => {
         };
     }, [competitionId, user.uid]);
 
-    // This effect handles the periodic update of the portfolio's value based on market prices.
     useEffect(() => {
+        if (!competition) return;
+        const status = getCompetitionStatus(competition.startDate, competition.endDate);
+        if (status.text !== 'Active') return;
+
         const updatePortfolioValue = async () => {
             const participantRef = doc(db, 'competitions', competitionId, 'participants', user.uid);
             const participantDoc = await getDoc(participantRef);
 
-            if (!participantDoc.exists()) {
-                console.log("Participant document not found, skipping portfolio update.");
-                return;
-            }
+            if (!participantDoc.exists()) return;
 
             const data = participantDoc.data();
             const { holdings, cash, portfolioValue: currentPortfolioValue } = data;
@@ -667,13 +734,9 @@ const CompetitionDetailPage = ({ user, competitionId, onBack }) => {
                     const quote = await getQuote(holdingData.originalSymbol);
                     if (quote) {
                         const price = parseFloat(quote['05. price']);
-                        if (!isNaN(price)) {
-                            totalStockValue += price * holdingData.shares;
-                        } else {
-                            totalStockValue += holdingData.avgCost * holdingData.shares; // Fallback for bad price data
-                        }
+                        totalStockValue += (isNaN(price) ? holdingData.avgCost : price) * holdingData.shares;
                     } else {
-                        totalStockValue += holdingData.avgCost * holdingData.shares; // Fallback if quote fails
+                        totalStockValue += holdingData.avgCost * holdingData.shares;
                     }
                 }
 
@@ -683,26 +746,26 @@ const CompetitionDetailPage = ({ user, competitionId, onBack }) => {
                     await setDoc(participantRef, { portfolioValue: newPortfolioValue }, { merge: true });
                 }
             } catch (error) {
-                console.error("Failed to update portfolio value due to an error:", error);
+                console.error("Failed to update portfolio value:", error);
             }
         };
+        
+        updatePortfolioValue();
+        const intervalId = setInterval(updatePortfolioValue, 120000); // 2 minutes
 
-        // IMPORTANT: The free Alpha Vantage API has a very low limit (e.g., 25 requests per day).
-        // A 2-minute interval will exhaust this limit very quickly.
-        // For a production app, you would need a paid API plan or a much longer interval (e.g., 15-30 minutes).
-        updatePortfolioValue(); // Run once immediately on component load.
-        const intervalId = setInterval(updatePortfolioValue, 120000); // 120000ms = 2 minutes
-
-        return () => clearInterval(intervalId); // Cleanup on component unmount
-    }, [competitionId, user.uid]);
+        return () => clearInterval(intervalId);
+    }, [competition, competitionId, user.uid]);
 
 
     if (loading) return <p className="p-8 text-white">Loading competition details...</p>;
     if (!competition) return <p className="p-8 text-white">Competition not found.</p>;
 
+    const status = getCompetitionStatus(competition.startDate, competition.endDate);
+    const isTradingActive = status.text === 'Active';
+
     return (
         <div className="p-8 text-white">
-            {tradeModalSymbol && (
+            {tradeModalSymbol && isTradingActive && (
                 <TradeModal 
                     user={user}
                     competitionId={competitionId} 
@@ -711,8 +774,13 @@ const CompetitionDetailPage = ({ user, competitionId, onBack }) => {
                 />
             )}
             <button onClick={onBack} className="mb-6 text-primary hover:underline">{'< Back to My Competitions'}</button>
-            <h1 className="text-4xl font-bold">{competition.name}</h1>
-            <p className="text-gray-400 mt-2">Created by {competition.ownerName} on {formatDate(competition.createdAt)}</p>
+            <div className="flex items-center gap-4">
+                <h1 className="text-4xl font-bold">{competition.name}</h1>
+                <span className={`text-lg font-bold px-3 py-1 rounded-full ${status.color}`}>{status.text}</span>
+            </div>
+            <p className="text-gray-400 mt-2">
+                {formatDate(competition.startDate)} to {formatDate(competition.endDate)} • Created by {competition.ownerName}
+            </p>
             
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-6">
                 <div className="lg:col-span-2">
@@ -720,7 +788,7 @@ const CompetitionDetailPage = ({ user, competitionId, onBack }) => {
                 </div>
                 <div className="lg:col-span-1">
                     <PortfolioView participantData={participantData} onTrade={setTradeModalSymbol} />
-                    <StockSearchView onSelectStock={setTradeModalSymbol} />
+                    <StockSearchView onSelectStock={setTradeModalSymbol} isTradingActive={isTradingActive} />
                 </div>
             </div>
         </div>
