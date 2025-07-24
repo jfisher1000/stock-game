@@ -800,7 +800,11 @@ function App() {
             case 'explore':
                 return <ExplorePage user={user} />;
             case 'admin':
-                return user?.role === 'admin' ? <MyCompetitionsPage user={user} onSelectCompetition={setSelectedCompetitionId}/>;
+                if (user?.role === 'admin') {
+                    return <AdminPage />;
+                } else {
+                    return <MyCompetitionsPage user={user} onSelectCompetition={setSelectedCompetitionId} />;
+                }
             default:
                 return <MyCompetitionsPage user={user} onSelectCompetition={setSelectedCompetitionId} />;
         }
