@@ -42,6 +42,8 @@ const db = getFirestore(app);
 // --- Helper & Icon Components ---
 const formatDate = (ts) => ts ? new Date(ts.seconds * 1000).toLocaleDateString() : 'N/A';
 const formatCurrency = (amount) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+const sanitizeSymbolForFirestore = (symbol) => symbol.replace(/\./g, '_');
+
 
 const Icon = ({ path, className = "w-6 h-6" }) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={path}></path></svg>;
 const CompetitionsIcon = () => <Icon path="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />;
@@ -366,13 +368,13 @@ const PortfolioView = ({ participantData, onTrade }) => {
                 </thead>
                 <tbody>
                     {Object.keys(holdings || {}).length > 0 ? (
-                        Object.entries(holdings).map(([symbol, data]) => (
-                            <tr key={symbol} className="border-b border-white/20 last:border-0">
-                                <td className="p-2 font-bold">{symbol}</td>
+                        Object.entries(holdings).map(([sanitizedSymbol, data]) => (
+                            <tr key={sanitizedSymbol} className="border-b border-white/20 last:border-0">
+                                <td className="p-2 font-bold">{data.originalSymbol || sanitizedSymbol}</td>
                                 <td className="p-2">{data.shares}</td>
                                 <td className="p-2">{formatCurrency(data.avgCost)}</td>
                                 <td className="p-2">
-                                    <button onClick={() => onTrade(symbol)} className="bg-primary/50 text-xs py-1 px-2 rounded hover:bg-primary">Trade</button>
+                                    <button onClick={() => onTrade(data.originalSymbol || sanitizedSymbol)} className="bg-primary/50 text-xs py-1 px-2 rounded hover:bg-primary">Trade</button>
                                 </td>
                             </tr>
                         ))
@@ -481,57 +483,77 @@ const TradeModal = ({ user, competitionId, symbol, onClose }) => {
         setError('');
 
         const price = parseFloat(quote['05. price']);
+        if (isNaN(price)) {
+            setError('Could not determine stock price. Please try again.');
+            setProcessing(false);
+            return;
+        }
+
         const totalCost = shares * price;
         const participantRef = doc(db, 'competitions', competitionId, 'participants', user.uid);
+        const sanitizedSymbol = sanitizeSymbolForFirestore(symbol);
 
         try {
             await runTransaction(db, async (transaction) => {
                 const participantDoc = await transaction.get(participantRef);
                 if (!participantDoc.exists()) {
-                    throw new Error("Participant document does not exist!");
+                    throw new Error("Your participant data could not be found.");
                 }
 
                 const data = participantDoc.data();
                 const currentCash = data.cash;
                 const currentHoldings = data.holdings || {};
+                const currentPortfolioValue = data.portfolioValue;
 
                 if (tradeType === 'buy') {
                     if (currentCash < totalCost) {
                         throw new Error("Not enough cash to complete this purchase.");
                     }
                     const newCash = currentCash - totalCost;
-                    const existingShares = currentHoldings[symbol]?.shares || 0;
-                    const existingCost = currentHoldings[symbol]?.totalCost || 0;
+                    const existingHolding = currentHoldings[sanitizedSymbol] || { shares: 0, totalCost: 0 };
                     
-                    const newShares = existingShares + shares;
-                    const newTotalCost = existingCost + totalCost;
+                    const newShares = existingHolding.shares + shares;
+                    const newTotalCost = existingHolding.totalCost + totalCost;
                     const newAvgCost = newTotalCost / newShares;
-
+                    
+                    // On a buy, portfolio value does not change, as cash is exchanged for an asset of equal value.
                     transaction.update(participantRef, {
                         cash: newCash,
-                        [`holdings.${symbol}`]: { shares: newShares, avgCost: newAvgCost, totalCost: newTotalCost, name: quote['2. name'] }
+                        [`holdings.${sanitizedSymbol}`]: { 
+                            shares: newShares, 
+                            avgCost: newAvgCost, 
+                            totalCost: newTotalCost, 
+                            name: quote['2. name'],
+                            originalSymbol: symbol 
+                        }
                     });
 
                 } else { // Sell
-                    const existingShares = currentHoldings[symbol]?.shares || 0;
-                    if (shares > existingShares) {
+                    const existingHolding = currentHoldings[sanitizedSymbol];
+                    if (!existingHolding || shares > existingHolding.shares) {
                         throw new Error("You don't own enough shares to sell.");
                     }
                     const newCash = currentCash + totalCost;
-                    const newShares = existingShares - shares;
+                    const newShares = existingHolding.shares - shares;
+                    
+                    const profitOrLoss = (price * shares) - (existingHolding.avgCost * shares);
+                    const newPortfolioValue = currentPortfolioValue + profitOrLoss;
 
                     if (newShares === 0) {
                         const newHoldings = { ...currentHoldings };
-                        delete newHoldings[symbol];
-                        transaction.update(participantRef, { cash: newCash, holdings: newHoldings });
+                        delete newHoldings[sanitizedSymbol];
+                        transaction.update(participantRef, { 
+                            cash: newCash, 
+                            holdings: newHoldings,
+                            portfolioValue: newPortfolioValue 
+                        });
                     } else {
-                        const existingTotalCost = currentHoldings[symbol].totalCost;
-                        const avgCost = currentHoldings[symbol].avgCost;
-                        const newTotalCost = existingTotalCost - (shares * avgCost);
+                        const newTotalCost = existingHolding.totalCost - (shares * existingHolding.avgCost);
                         transaction.update(participantRef, {
                             cash: newCash,
-                            [`holdings.${symbol}.shares`]: newShares,
-                             [`holdings.${symbol}.totalCost`]: newTotalCost
+                            [`holdings.${sanitizedSymbol}.shares`]: newShares,
+                            [`holdings.${sanitizedSymbol}.totalCost`]: newTotalCost,
+                            portfolioValue: newPortfolioValue
                         });
                     }
                 }
@@ -539,9 +561,9 @@ const TradeModal = ({ user, competitionId, symbol, onClose }) => {
             onClose();
         } catch (e) {
             console.error("Transaction failed: ", e);
-            setError(e.message);
+            setError(e.message || "An unexpected error occurred during the transaction.");
+            setProcessing(false);
         }
-        setProcessing(false);
     };
 
     const currentPrice = quote ? parseFloat(quote['05. price']) : 0;
@@ -615,6 +637,65 @@ const CompetitionDetailPage = ({ user, competitionId, onBack }) => {
             unsubscribeParticipant();
         };
     }, [competitionId, user.uid]);
+
+    // This effect handles the periodic update of the portfolio's value based on market prices.
+    useEffect(() => {
+        const updatePortfolioValue = async () => {
+            const participantRef = doc(db, 'competitions', competitionId, 'participants', user.uid);
+            const participantDoc = await getDoc(participantRef);
+
+            if (!participantDoc.exists()) {
+                console.log("Participant document not found, skipping portfolio update.");
+                return;
+            }
+
+            const data = participantDoc.data();
+            const { holdings, cash, portfolioValue: currentPortfolioValue } = data;
+
+            if (!holdings || Object.keys(holdings).length === 0) {
+                if (currentPortfolioValue !== cash) {
+                    await setDoc(participantRef, { portfolioValue: cash }, { merge: true });
+                }
+                return;
+            }
+
+            try {
+                const holdingEntries = Object.entries(holdings);
+                let totalStockValue = 0;
+
+                for (const [, holdingData] of holdingEntries) {
+                    const quote = await getQuote(holdingData.originalSymbol);
+                    if (quote) {
+                        const price = parseFloat(quote['05. price']);
+                        if (!isNaN(price)) {
+                            totalStockValue += price * holdingData.shares;
+                        } else {
+                            totalStockValue += holdingData.avgCost * holdingData.shares; // Fallback for bad price data
+                        }
+                    } else {
+                        totalStockValue += holdingData.avgCost * holdingData.shares; // Fallback if quote fails
+                    }
+                }
+
+                const newPortfolioValue = cash + totalStockValue;
+
+                if (Math.abs(newPortfolioValue - currentPortfolioValue) > 0.01) {
+                    await setDoc(participantRef, { portfolioValue: newPortfolioValue }, { merge: true });
+                }
+            } catch (error) {
+                console.error("Failed to update portfolio value due to an error:", error);
+            }
+        };
+
+        // IMPORTANT: The free Alpha Vantage API has a very low limit (e.g., 25 requests per day).
+        // A 2-minute interval will exhaust this limit very quickly.
+        // For a production app, you would need a paid API plan or a much longer interval (e.g., 15-30 minutes).
+        updatePortfolioValue(); // Run once immediately on component load.
+        const intervalId = setInterval(updatePortfolioValue, 120000); // 120000ms = 2 minutes
+
+        return () => clearInterval(intervalId); // Cleanup on component unmount
+    }, [competitionId, user.uid]);
+
 
     if (loading) return <p className="p-8 text-white">Loading competition details...</p>;
     if (!competition) return <p className="p-8 text-white">Competition not found.</p>;
@@ -719,7 +800,7 @@ function App() {
             case 'explore':
                 return <ExplorePage user={user} />;
             case 'admin':
-                return user?.role === 'admin' ? <AdminPage /> : <MyCompetitionsPage user={user} onSelectCompetition={setSelectedCompetitionId}/>;
+                return user?.role === 'admin' ? <MyCompetitionsPage user={user} onSelectCompetition={setSelectedCompetitionId}/>;
             default:
                 return <MyCompetitionsPage user={user} onSelectCompetition={setSelectedCompetitionId} />;
         }
