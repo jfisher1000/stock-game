@@ -792,7 +792,69 @@ const CompetitionDetailPage = ({ user, competitionId, onBack }) => {
 };
 
 
-const AdminPage = () => <div className="p-8 text-white"><h1 className="text-4xl font-bold">Admin Dashboard</h1></div>;
+const AdminPage = () => {
+    const [apiStats, setApiStats] = useState({ total: 0, avgPerMinute: 0 });
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        // Calculate the timestamp for 2 hours ago
+        const twoHoursAgo = new Date();
+        twoHoursAgo.setHours(twoHoursAgo.getHours() - 2);
+        const twoHoursAgoTimestamp = Timestamp.fromDate(twoHoursAgo);
+
+        // Query for logs within the last 2 hours
+        const q = query(collection(db, 'api_logs'), where('timestamp', '>=', twoHoursAgoTimestamp));
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const totalCalls = snapshot.size;
+            
+            // Calculate average per minute over the 2-hour (120 minutes) window
+            const avg = totalCalls / 120;
+
+            setApiStats({
+                total: totalCalls,
+                avgPerMinute: avg.toFixed(2) // Format to 2 decimal places
+            });
+            setLoading(false);
+        }, (error) => {
+            console.error("Error fetching API logs:", error);
+            setLoading(false);
+        });
+
+        // Cleanup the listener when the component unmounts
+        return () => unsubscribe();
+    }, []);
+
+
+    return (
+        <div className="p-8 text-white">
+            <h1 className="text-4xl font-bold mb-8">Admin Dashboard</h1>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="glass-card p-6 rounded-lg">
+                    <h2 className="text-2xl font-bold mb-4">API Usage (Last 2 Hours)</h2>
+                    {loading ? <p>Loading stats...</p> : (
+                        <div className="space-y-4">
+                            <div>
+                                <p className="text-gray-400">Total Calls</p>
+                                <p className="text-3xl font-bold">{apiStats.total}</p>
+                            </div>
+                            <div>
+                                <p className="text-gray-400">Average Calls / Minute</p>
+                                <p className="text-3xl font-bold">{apiStats.avgPerMinute}</p>
+                            </div>
+                        </div>
+                    )}
+                </div>
+                 {/* Placeholder for future stats */}
+                <div className="glass-card p-6 rounded-lg">
+                     <h2 className="text-2xl font-bold mb-4">Other Stats</h2>
+                     <p className="text-gray-400">More analytics coming soon...</p>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 
 
 // --- Navigation Components ---
