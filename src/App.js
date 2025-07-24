@@ -293,7 +293,7 @@ const MyCompetitionsPage = ({ user, onSelectCompetition }) => {
         <div className="p-8 text-white">
             <h1 className="text-4xl font-bold mb-6">My Competitions</h1>
             {competitions.length === 0 ? (
-                <p>You haven'tt joined any competitions yet. Go to Explore to find one!</p>
+                <p>You haven't joined any competitions yet. Go to Explore to find one!</p>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {competitions.map(comp => <CompetitionCard key={comp.id} competition={comp} onClick={() => onSelectCompetition(comp.id)} />)}
@@ -747,7 +747,7 @@ const CompetitionDetailPage = ({ user, competitionId, onBack }) => {
         };
         
         updatePortfolioValue();
-        const intervalId = setInterval(updatePortfolioValue, 120000); // 2 minutes
+        const intervalId = setInterval(updatePortfolioValue, 10000); // 10 seconds
 
         return () => clearInterval(intervalId);
     }, [competition, participantData, competitionId, user.uid]); // Added participantData to dependency array
