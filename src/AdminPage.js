@@ -9,7 +9,63 @@ import {
     updateDoc,
     setDoc
 } from 'firebase/firestore';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+
+// --- NEW: Dependency-Free Bar Chart Component ---
+const SimpleBarChart = ({ data }) => {
+    if (!data || data.length === 0) {
+        return <p className="text-center text-gray-400">No API usage data to display.</p>;
+    }
+
+    const maxValue = Math.max(...data.map(d => d.calls), 0);
+    const chartHeight = 300;
+    const barWidth = 30;
+    const barMargin = 15;
+    const chartWidth = data.length * (barWidth + barMargin);
+
+    return (
+        <div className="overflow-x-auto p-4">
+            <svg width={chartWidth} height={chartHeight + 40} className="font-sans">
+                {/* Y-Axis Labels */}
+                <g className="text-xs text-gray-400 fill-current">
+                    <text x="0" y={chartHeight - chartHeight + 15} dy=".32em">{maxValue}</text>
+                    <text x="0" y={chartHeight / 2} dy=".32em">{Math.round(maxValue / 2)}</text>
+                    <text x="0" y={chartHeight} dy=".32em">0</text>
+                </g>
+                
+                {/* Bars and X-Axis Labels */}
+                {data.map((d, i) => {
+                    const barHeight = maxValue > 0 ? (d.calls / maxValue) * chartHeight : 0;
+                    const x = i * (barWidth + barMargin) + 40; // Offset for Y-axis labels
+                    const y = chartHeight - barHeight;
+                    return (
+                        <g key={d.timeLabel}>
+                            <rect
+                                x={x}
+                                y={y}
+                                width={barWidth}
+                                height={barHeight}
+                                className="fill-current text-indigo-500 hover:text-indigo-400 transition-colors"
+                            />
+                            <text
+                                x={x + barWidth / 2}
+                                y={chartHeight + 20}
+                                textAnchor="middle"
+                                className="text-xs text-gray-300 fill-current"
+                            >
+                                {d.timeLabel}
+                            </text>
+                        </g>
+                    );
+                })}
+                 {/* Y-Axis Line */}
+                <line x1="35" y1="0" x2="35" y2={chartHeight} stroke="rgba(255, 255, 255, 0.2)" />
+                {/* X-Axis Line */}
+                <line x1="35" y1={chartHeight} x2={chartWidth} y2={chartHeight} stroke="rgba(255, 255, 255, 0.2)" />
+            </svg>
+        </div>
+    );
+};
+
 
 const AdminPage = () => {
     const [apiStats, setApiStats] = useState({ total: 0, avgPerMinute: 0 });
@@ -27,21 +83,17 @@ const AdminPage = () => {
         const unsubscribeLogs = onSnapshot(query(collection(db, 'api_logs'), where('timestamp', '>=', twoDaysAgo)), (snapshot) => {
             const calls = snapshot.docs.map(doc => doc.data().timestamp.toDate());
             
-            // Group calls by a full ISO string key to preserve date and time for sorting.
             const callsByHour = calls.reduce((acc, callTime) => {
                 const hourKey = new Date(callTime.getFullYear(), callTime.getMonth(), callTime.getDate(), callTime.getHours()).toISOString();
                 acc[hourKey] = (acc[hourKey] || 0) + 1;
                 return acc;
             }, {});
 
-            // Sort the data by the full date before mapping and formatting for the chart.
-            // This ensures the X-axis is always in chronological order.
             const formattedData = Object.entries(callsByHour)
                 .sort(([hourA], [hourB]) => new Date(hourA) - new Date(hourB))
                 .map(([hourISO, count]) => {
                     const date = new Date(hourISO);
                     return {
-                        // Create a more descriptive label that includes the date and hour.
                         timeLabel: `${date.getMonth() + 1}/${date.getDate()} ${date.getHours()}:00`,
                         calls: count,
                     };
@@ -51,7 +103,7 @@ const AdminPage = () => {
 
             const recentCalls = calls.filter(call => call.getTime() > (Date.now() - 2 * 60 * 60 * 1000));
             const totalCalls = recentCalls.length;
-            const avg = totalCalls / 120;
+            const avg = totalCalls > 0 ? totalCalls / 120 : 0;
             setApiStats({ total: totalCalls, avgPerMinute: avg.toFixed(2) });
             setLoading(false);
         }, (error) => {
@@ -98,20 +150,7 @@ const AdminPage = () => {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <div className="glass-card p-6 rounded-lg lg:col-span-2">
                     <h2 className="text-2xl font-bold mb-4">API Usage (Last 48 Hours)</h2>
-                    {loading ? <p>Loading chart...</p> : (
-                        <div style={{ width: '100%', height: 300 }}>
-                            <ResponsiveContainer>
-                                <BarChart data={chartData}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.2)" />
-                                    <XAxis dataKey="timeLabel" stroke="rgba(255, 255, 255, 0.7)" />
-                                    <YAxis stroke="rgba(255, 255, 255, 0.7)" />
-                                    <Tooltip contentStyle={{ backgroundColor: 'rgba(30, 41, 59, 0.8)', border: '1px solid rgba(255, 255, 255, 0.2)' }} />
-                                    <Legend wrapperStyle={{ color: 'rgba(255, 255, 255, 0.7)' }}/>
-                                    <Bar dataKey="calls" fill="#8884d8" />
-                                </BarChart>
-                            </ResponsiveContainer>
-                        </div>
-                    )}
+                    {loading ? <p>Loading chart...</p> : <SimpleBarChart data={chartData} />}
                 </div>
 
                 <div className="glass-card p-6 rounded-lg">
