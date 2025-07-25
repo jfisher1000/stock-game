@@ -21,7 +21,8 @@ import {
     Timestamp,
     getDocs,
     deleteDoc,
-    collectionGroup, // Import collectionGroup for querying subcollections
+    collectionGroup,
+    updateDoc
 } from 'firebase/firestore';
 import { searchSymbols, getQuote } from './api';
 
@@ -110,7 +111,7 @@ const AuthPage = () => {
     );
 };
 
-// --- NEW: Invitation Components ---
+// --- Invitation Components ---
 
 const InviteModal = ({ user, competition, onClose }) => {
     const [searchTerm, setSearchTerm] = useState('');
@@ -131,7 +132,7 @@ const InviteModal = ({ user, competition, onClose }) => {
             const q = query(collection(db, 'users'), where('username', '>=', searchTerm), where('username', '<=', searchTerm + '\uf8ff'));
             const querySnapshot = await getDocs(q);
             const users = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
-                .filter(u => u.id !== user.uid && !competition.participantIds.includes(u.id)); // Exclude self and existing participants
+                .filter(u => u.id !== user.uid && !competition.participantIds.includes(u.id));
             setResults(users);
         } catch (err) {
             setError('Failed to search for users.');
@@ -152,7 +153,7 @@ const InviteModal = ({ user, competition, onClose }) => {
                 invitedUsername: invitedUser.username,
                 invitedAt: serverTimestamp()
             });
-            setInvited([...invited, invitedUser.id]); // Keep track of who has been invited in this session
+            setInvited([...invited, invitedUser.id]);
         } catch (err) {
             setError(`Failed to invite ${invitedUser.username}. They may have already been invited.`);
             console.error(err);
@@ -205,7 +206,6 @@ const PendingInvitations = ({ user }) => {
 
     useEffect(() => {
         if (!user) return;
-        // This query requires a Firestore index. The console will provide a link to create it.
         const q = query(collectionGroup(db, 'invitations'), where('__name__', '>', `competitions/ /invitations/${user.uid}`), where('__name__', '<', `competitions/~/invitations/${user.uid}`));
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -228,7 +228,6 @@ const PendingInvitations = ({ user }) => {
             const comp = competitionDoc.data();
             const batch = writeBatch(db);
 
-            // Add to participants subcollection
             const participantRef = doc(db, 'competitions', invite.competitionId, 'participants', user.uid);
             batch.set(participantRef, {
                 username: user.username,
@@ -238,13 +237,11 @@ const PendingInvitations = ({ user }) => {
                 holdings: {}
             });
 
-            // Update participantIds array on competition doc
             const competitionRef = doc(db, 'competitions', invite.competitionId);
             batch.update(competitionRef, {
                 participantIds: [...(comp.participantIds || []), user.uid]
             });
 
-            // Delete the invitation
             const inviteRef = doc(db, 'competitions', invite.competitionId, 'invitations', user.uid);
             batch.delete(inviteRef);
 
@@ -482,7 +479,6 @@ const CompetitionCard = ({ competition, onClick }) => {
                 <span className={`text-xs font-bold px-2 py-1 rounded-full ${status.color}`}>{status.text}</span>
             </div>
             <div className="flex-grow">
-                {/* UPDATED: "Created by" changed to "Owner" */}
                 <p className="text-gray-400">Owner: {competition.ownerName}</p>
                 <p className="text-gray-400">Starts with {formatCurrency(competition.startingCash)}</p>
             </div>
@@ -575,9 +571,10 @@ const ExplorePage = ({ user }) => {
 const PortfolioView = ({ participantData, onTrade, stockPrices }) => {
     if (!participantData) return <div className="glass-card p-6 rounded-lg mt-6"><p>Loading portfolio...</p></div>;
 
-    const { cash, holdings, portfolioValue } = participantData;
+    const { cash, portfolioValue } = participantData;
+    const holdings = participantData.holdings || {};
 
-    const totalStockValue = Object.entries(holdings || {}).reduce((acc, [, data]) => {
+    const totalStockValue = Object.values(holdings).reduce((acc, data) => {
         const currentValue = stockPrices[data.originalSymbol] || data.avgCost;
         return acc + (currentValue * data.shares);
     }, 0);
@@ -601,7 +598,7 @@ const PortfolioView = ({ participantData, onTrade, stockPrices }) => {
                     </tr>
                 </thead>
                 <tbody>
-                    {Object.keys(holdings || {}).length > 0 ? (
+                    {Object.keys(holdings).length > 0 ? (
                         Object.entries(holdings).map(([sanitizedSymbol, data]) => {
                             const currentValue = stockPrices[data.originalSymbol] || data.avgCost;
                             const totalValue = currentValue * data.shares;
@@ -624,7 +621,7 @@ const PortfolioView = ({ participantData, onTrade, stockPrices }) => {
                         </tr>
                     )}
                 </tbody>
-                {Object.keys(holdings || {}).length > 0 && (
+                {Object.keys(holdings).length > 0 && (
                      <tfoot className="border-t-2 border-white/20 font-bold">
                         <tr>
                             <td className="p-2" colSpan="4">Total Stock Value</td>
@@ -761,7 +758,6 @@ const TradeModal = ({ user, competitionId, symbol, onClose }) => {
                 const data = participantDoc.data();
                 const currentCash = data.cash;
                 const currentHoldings = data.holdings || {};
-                const currentPortfolioValue = data.portfolioValue;
 
                 if (tradeType === 'buy') {
                     if (currentCash < totalCost) {
@@ -793,16 +789,12 @@ const TradeModal = ({ user, competitionId, symbol, onClose }) => {
                     const newCash = currentCash + totalCost;
                     const newShares = existingHolding.shares - shares;
                     
-                    const profitOrLoss = (price * shares) - (existingHolding.avgCost * shares);
-                    const newPortfolioValue = currentPortfolioValue + profitOrLoss;
-
                     if (newShares === 0) {
                         const newHoldings = { ...currentHoldings };
                         delete newHoldings[sanitizedSymbol];
                         transaction.update(participantRef, { 
                             cash: newCash, 
                             holdings: newHoldings,
-                            portfolioValue: newPortfolioValue 
                         });
                     } else {
                         const newTotalCost = existingHolding.totalCost - (shares * existingHolding.avgCost);
@@ -810,7 +802,6 @@ const TradeModal = ({ user, competitionId, symbol, onClose }) => {
                             cash: newCash,
                             [`holdings.${sanitizedSymbol}.shares`]: newShares,
                             [`holdings.${sanitizedSymbol}.totalCost`]: newTotalCost,
-                            portfolioValue: newPortfolioValue
                         });
                     }
                 }
@@ -872,7 +863,7 @@ const CompetitionDetailPage = ({ user, competitionId, onBack }) => {
     const [participantData, setParticipantData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [tradeModalSymbol, setTradeModalSymbol] = useState(null);
-    const [isInviteModalOpen, setInviteModalOpen] = useState(false); // NEW: State for invite modal
+    const [isInviteModalOpen, setInviteModalOpen] = useState(false);
     const [stockPrices, setStockPrices] = useState({});
 
     useEffect(() => {
@@ -898,53 +889,66 @@ const CompetitionDetailPage = ({ user, competitionId, onBack }) => {
     }, [competitionId, user.uid]);
 
     useEffect(() => {
-        if (!competition || !participantData) return;
+        if (!participantData || !participantData.holdings) {
+            return;
+        }
+
+        const symbols = Object.values(participantData.holdings).map(h => h.originalSymbol);
+        if (symbols.length === 0) {
+            setStockPrices({});
+            return;
+        }
+
+        const unsubscribers = symbols.map(symbol => {
+            const docRef = doc(db, 'market_data', symbol);
+            return onSnapshot(docRef, (doc) => {
+                if (doc.exists()) {
+                    const data = doc.data();
+                    setStockPrices(prevPrices => ({
+                        ...prevPrices,
+                        [symbol]: data.price
+                    }));
+                }
+            });
+        });
+
+        return () => unsubscribers.forEach(unsub => unsub());
+
+    }, [participantData]);
+
+    useEffect(() => {
+        if (!participantData || !competition || Object.keys(stockPrices).length === 0) {
+            return;
+        }
+
         const status = getCompetitionStatus(competition.startDate, competition.endDate);
         if (status.text !== 'Active') return;
 
-        const updatePortfolioValue = async () => {
-            const { holdings, cash, portfolioValue: currentPortfolioValue } = participantData;
-            const participantRef = doc(db, 'competitions', competitionId, 'participants', user.uid);
-
-            if (!holdings || Object.keys(holdings).length === 0) {
-                if (currentPortfolioValue !== cash) {
-                    await setDoc(participantRef, { portfolioValue: cash }, { merge: true });
-                }
-                return;
-            }
-
-            try {
-                const holdingEntries = Object.entries(holdings);
-                let totalStockValue = 0;
-                const newStockPrices = { ...stockPrices };
-
-                for (const [, holdingData] of holdingEntries) {
-                    const quote = await getQuote(holdingData.originalSymbol);
-                    if (quote) {
-                        const price = parseFloat(quote['05. price']);
-                        totalStockValue += (isNaN(price) ? holdingData.avgCost : price) * holdingData.shares;
-                        newStockPrices[holdingData.originalSymbol] = price;
-                    } else {
-                        totalStockValue += holdingData.avgCost * holdingData.shares;
-                    }
-                }
-                
-                setStockPrices(newStockPrices);
-                const newPortfolioValue = cash + totalStockValue;
-
-                if (Math.abs(newPortfolioValue - currentPortfolioValue) > 0.01) {
-                    await setDoc(participantRef, { portfolioValue: newPortfolioValue }, { merge: true });
-                }
-            } catch (error) {
-                console.error("Failed to update portfolio value:", error);
-            }
-        };
+        const { cash, holdings, portfolioValue: currentPortfolioValue } = participantData;
         
-        updatePortfolioValue();
-        const intervalId = setInterval(updatePortfolioValue, 10000); 
+        let totalStockValue = 0;
+        let allPricesAvailable = true;
 
-        return () => clearInterval(intervalId);
-    }, [competition, participantData, competitionId, user.uid, stockPrices]); 
+        Object.values(holdings).forEach(holding => {
+            const price = stockPrices[holding.originalSymbol];
+            if (price === undefined) {
+                allPricesAvailable = false;
+            } else {
+                totalStockValue += price * holding.shares;
+            }
+        });
+
+        if (!allPricesAvailable) return;
+
+        const newPortfolioValue = cash + totalStockValue;
+        
+        if (Math.abs(newPortfolioValue - currentPortfolioValue) > 0.01) {
+            const participantRef = doc(db, 'competitions', competitionId, 'participants', user.uid);
+            updateDoc(participantRef, { portfolioValue: newPortfolioValue })
+                .catch(err => console.error("Error updating portfolio value:", err));
+        }
+
+    }, [stockPrices, participantData, competition, competitionId, user.uid]);
 
 
     if (loading) return <p className="p-8 text-white">Loading competition details...</p>;
@@ -952,7 +956,6 @@ const CompetitionDetailPage = ({ user, competitionId, onBack }) => {
 
     const status = getCompetitionStatus(competition.startDate, competition.endDate);
     const isTradingActive = status.text === 'Active';
-    // NEW: Determine if user can invite
     const canInvite = competition.isPublic || competition.ownerId === user.uid;
 
     return (
@@ -965,7 +968,6 @@ const CompetitionDetailPage = ({ user, competitionId, onBack }) => {
                     onClose={() => setTradeModalSymbol(null)} 
                 />
             )}
-            {/* NEW: Render Invite Modal */}
             {isInviteModalOpen && (
                 <InviteModal 
                     user={user}
@@ -975,7 +977,6 @@ const CompetitionDetailPage = ({ user, competitionId, onBack }) => {
             )}
             <div className="flex justify-between items-center mb-6">
                  <button onClick={onBack} className="text-primary hover:underline">{'< Back to My Competitions'}</button>
-                 {/* NEW: Show invite button if user has permission */}
                  {canInvite && (
                      <button onClick={() => setInviteModalOpen(true)} className="bg-primary/80 hover:bg-primary text-white font-bold py-2 px-4 rounded-md flex items-center gap-2">
                         <UserAddIcon /> Invite Players
@@ -988,7 +989,6 @@ const CompetitionDetailPage = ({ user, competitionId, onBack }) => {
                 <span className={`text-lg font-bold px-3 py-1 rounded-full ${status.color}`}>{status.text}</span>
             </div>
             <p className="text-gray-400 mt-2">
-                {/* UPDATED: "Created by" changed to "Owner" */}
                 {formatDate(competition.startDate)} to {formatDate(competition.endDate)} • Owner: {competition.ownerName}
             </p>
             
@@ -1009,31 +1009,57 @@ const CompetitionDetailPage = ({ user, competitionId, onBack }) => {
 const AdminPage = () => {
     const [apiStats, setApiStats] = useState({ total: 0, avgPerMinute: 0 });
     const [loading, setLoading] = useState(true);
+    const [refreshInterval, setRefreshInterval] = useState(10);
+    const [inputInterval, setInputInterval] = useState(10);
+    const [saveStatus, setSaveStatus] = useState('');
 
+    const settingsRef = doc(db, 'app_settings', 'market_data');
+
+    // Fetch initial settings
     useEffect(() => {
-        const twoHoursAgo = new Date();
-        twoHoursAgo.setHours(twoHoursAgo.getHours() - 2);
-        const twoHoursAgoTimestamp = Timestamp.fromDate(twoHoursAgo);
-
-        const q = query(collection(db, 'api_logs'), where('timestamp', '>=', twoHoursAgoTimestamp));
-
-        const unsubscribe = onSnapshot(q, (snapshot) => {
+        const unsubscribeLogs = onSnapshot(query(collection(db, 'api_logs'), where('timestamp', '>=', new Date(Date.now() - 2 * 60 * 60 * 1000))), (snapshot) => {
             const totalCalls = snapshot.size;
             const avg = totalCalls / 120;
-
-            setApiStats({
-                total: totalCalls,
-                avgPerMinute: avg.toFixed(2)
-            });
+            setApiStats({ total: totalCalls, avgPerMinute: avg.toFixed(2) });
             setLoading(false);
         }, (error) => {
             console.error("Error fetching API logs:", error);
             setLoading(false);
         });
 
-        return () => unsubscribe();
+        const unsubscribeSettings = onSnapshot(settingsRef, (doc) => {
+            if (doc.exists()) {
+                const interval = doc.data().refreshIntervalMinutes;
+                setRefreshInterval(interval);
+                setInputInterval(interval);
+            } else {
+                // If settings don't exist, create them with a default
+                setDoc(settingsRef, { refreshIntervalMinutes: 10, lastRunTimestamp: null });
+            }
+        });
+
+        return () => {
+            unsubscribeLogs();
+            unsubscribeSettings();
+        };
     }, []);
 
+    const handleSaveInterval = async () => {
+        setSaveStatus('Saving...');
+        const newInterval = parseInt(inputInterval, 10);
+        if (isNaN(newInterval) || newInterval < 1) {
+            setSaveStatus('Error: Please enter a number greater than 0.');
+            return;
+        }
+        try {
+            await updateDoc(settingsRef, { refreshIntervalMinutes: newInterval });
+            setSaveStatus('Saved successfully!');
+        } catch (error) {
+            console.error("Error updating interval:", error);
+            setSaveStatus('Error: Could not save settings.');
+        }
+        setTimeout(() => setSaveStatus(''), 3000);
+    };
 
     return (
         <div className="p-8 text-white">
@@ -1055,8 +1081,21 @@ const AdminPage = () => {
                     )}
                 </div>
                 <div className="glass-card p-6 rounded-lg">
-                     <h2 className="text-2xl font-bold mb-4">Other Stats</h2>
-                     <p className="text-gray-400">More analytics coming soon...</p>
+                     <h2 className="text-2xl font-bold mb-4">App Settings</h2>
+                     <div className="space-y-2">
+                        <label className="block text-gray-300">Market Data Refresh Interval (minutes)</label>
+                        <div className="flex items-center gap-2">
+                            <input 
+                                type="number" 
+                                value={inputInterval}
+                                onChange={(e) => setInputInterval(e.target.value)}
+                                className="w-full bg-black/20 p-3 rounded-md border border-white/20" 
+                            />
+                            <button onClick={handleSaveInterval} className="py-3 px-5 rounded-md bg-primary hover:opacity-90">Save</button>
+                        </div>
+                        {saveStatus && <p className="text-sm mt-2">{saveStatus}</p>}
+                        <p className="text-xs text-gray-400">This controls how often the server fetches new stock prices. Minimum is 1 minute.</p>
+                     </div>
                 </div>
             </div>
         </div>
