@@ -25,7 +25,6 @@ import {
     updateDoc
 } from 'firebase/firestore';
 import { searchSymbols, getQuote } from './api';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 // FIX: Lazy load the AdminPage component. This means its code (and recharts) will only be downloaded when it's needed.
 const AdminPage = React.lazy(() => import('./AdminPage'));
