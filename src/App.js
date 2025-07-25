@@ -1013,13 +1013,31 @@ const AdminPage = () => {
     const [refreshInterval, setRefreshInterval] = useState(10);
     const [inputInterval, setInputInterval] = useState(10);
     const [saveStatus, setSaveStatus] = useState('');
+    const [chartData, setChartData] = useState([]);
 
     const settingsRef = doc(db, 'app_settings', 'market_data');
 
     // Fetch initial settings
     useEffect(() => {
-        const unsubscribeLogs = onSnapshot(query(collection(db, 'api_logs'), where('timestamp', '>=', new Date(Date.now() - 2 * 60 * 60 * 1000))), (snapshot) => {
-            const totalCalls = snapshot.size;
+        const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000);
+        const unsubscribeLogs = onSnapshot(query(collection(db, 'api_logs'), where('timestamp', '>=', twoDaysAgo)), (snapshot) => {
+            const calls = snapshot.docs.map(doc => doc.data().timestamp.toDate());
+            
+            const callsByHour = calls.reduce((acc, callTime) => {
+                const hour = new Date(callTime.getFullYear(), callTime.getMonth(), callTime.getDate(), callTime.getHours()).toISOString();
+                acc[hour] = (acc[hour] || 0) + 1;
+                return acc;
+            }, {});
+
+            const formattedData = Object.entries(callsByHour).map(([hour, count]) => ({
+                hour: new Date(hour).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
+                calls: count,
+            })).sort((a,b) => new Date('1970/01/01 ' + a.hour) - new Date('1970/01/01 ' + b.hour));
+
+            setChartData(formattedData);
+
+            const recentCalls = calls.filter(call => call.getTime() > (Date.now() - 2 * 60 * 60 * 1000));
+            const totalCalls = recentCalls.length;
             const avg = totalCalls / 120;
             setApiStats({ total: totalCalls, avgPerMinute: avg.toFixed(2) });
             setLoading(false);
@@ -1034,7 +1052,6 @@ const AdminPage = () => {
                 setRefreshInterval(interval);
                 setInputInterval(interval);
             } else {
-                // If settings don't exist, create them with a default
                 setDoc(settingsRef, { refreshIntervalMinutes: 10, lastRunTimestamp: null });
             }
         });
@@ -1065,9 +1082,27 @@ const AdminPage = () => {
     return (
         <div className="p-8 text-white">
             <h1 className="text-4xl font-bold mb-8">Admin Dashboard</h1>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div className="glass-card p-6 rounded-lg lg:col-span-2">
+                    <h2 className="text-2xl font-bold mb-4">API Usage (Last 48 Hours)</h2>
+                    {loading ? <p>Loading chart...</p> : (
+                        <div style={{ width: '100%', height: 300 }}>
+                            <ResponsiveContainer>
+                                <BarChart data={chartData}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.2)" />
+                                    <XAxis dataKey="hour" stroke="rgba(255, 255, 255, 0.7)" />
+                                    <YAxis stroke="rgba(255, 255, 255, 0.7)" />
+                                    <Tooltip contentStyle={{ backgroundColor: 'rgba(30, 41, 59, 0.8)', border: '1px solid rgba(255, 255, 255, 0.2)' }} />
+                                    <Legend wrapperStyle={{ color: 'rgba(255, 255, 255, 0.7)' }}/>
+                                    <Bar dataKey="calls" fill="#8884d8" />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
+                    )}
+                </div>
+
                 <div className="glass-card p-6 rounded-lg">
-                    <h2 className="text-2xl font-bold mb-4">API Usage (Last 2 Hours)</h2>
+                    <h2 className="text-2xl font-bold mb-4">API Stats (Last 2 Hours)</h2>
                     {loading ? <p>Loading stats...</p> : (
                         <div className="space-y-4">
                             <div>
@@ -1211,4 +1246,3 @@ function App() {
 }
 
 export default App;
-" in the docume
