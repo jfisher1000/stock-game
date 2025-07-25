@@ -1060,7 +1060,7 @@ const AdminPage = () => {
             unsubscribeLogs();
             unsubscribeSettings();
         };
-    }, [settingsRef]);
+    }, []);
 
     const handleSaveInterval = async () => {
         setSaveStatus('Saving...');
@@ -1245,4 +1245,5 @@ function App() {
     );
 }
 
-export default App
+export default App;
+" in the docume
