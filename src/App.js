@@ -396,7 +396,7 @@ const CreateCompetitionModal = ({ user, onClose }) => {
     );
 };
 
-const Leaderboard = ({ competitionId }) => {
+const Leaderboard = ({ competitionId, user }) => {
     const [participants, setParticipants] = useState([]);
 
     useEffect(() => {
@@ -410,28 +410,26 @@ const Leaderboard = ({ competitionId }) => {
     }, [competitionId]);
 
     return (
-        <div className="mt-6">
-            <h3 className="text-2xl font-semibold mb-4">Leaderboard</h3>
-            <div className="glass-card rounded-lg overflow-hidden">
-                <table className="w-full text-left">
-                    <thead className="bg-white/10">
-                        <tr>
-                            <th className="p-4">Rank</th>
-                            <th className="p-4">Player</th>
-                            <th className="p-4 text-right">Portfolio Value</th>
+        <div className="glass-card rounded-lg overflow-hidden">
+            <h3 className="text-xl font-semibold p-4 bg-white/10">Leaderboard</h3>
+            <table className="w-full text-left">
+                <thead>
+                    <tr className="border-b border-white/10">
+                        <th className="p-4">Rank</th>
+                        <th className="p-4">Player</th>
+                        <th className="p-4 text-right">Portfolio Value</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {participants.map((p, index) => (
+                        <tr key={p.id} className={`border-b border-white/10 last:border-b-0 ${p.id === user.uid ? 'bg-primary/20' : ''}`}>
+                            <td className="p-4">{index + 1}</td>
+                            <td className="p-4">{p.username}</td>
+                            <td className="p-4 text-right">{formatCurrency(p.portfolioValue)}</td>
                         </tr>
-                    </thead>
-                    <tbody>
-                        {participants.map((p, index) => (
-                            <tr key={p.id} className="border-b border-white/10 last:border-b-0">
-                                <td className="p-4">{index + 1}</td>
-                                <td className="p-4">{p.username}</td>
-                                <td className="p-4 text-right">{formatCurrency(p.portfolioValue)}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
+                    ))}
+                </tbody>
+            </table>
         </div>
     );
 };
@@ -568,69 +566,99 @@ const ExplorePage = ({ user }) => {
 
 // --- Trading & Portfolio Components ---
 
-const PortfolioView = ({ participantData, onTrade, stockPrices }) => {
-    if (!participantData) return <div className="glass-card p-6 rounded-lg mt-6"><p>Loading portfolio...</p></div>;
+const PortfolioSummaryCard = ({ competition, participantData, stockPrices }) => {
+    if (!participantData || !competition) return null;
 
-    const { cash, portfolioValue } = participantData;
-    const holdings = participantData.holdings || {};
-
-    const totalStockValue = Object.values(holdings).reduce((acc, data) => {
-        const currentValue = stockPrices[data.originalSymbol] || data.avgCost;
-        return acc + (currentValue * data.shares);
-    }, 0);
+    const { portfolioValue, cash, holdings } = participantData;
+    const totalCostBasis = Object.values(holdings || {}).reduce((acc, holding) => acc + (holding.totalCost || 0), 0);
+    const totalGainLoss = portfolioValue - (competition.startingCash - cash + totalCostBasis);
+    const gainLossColor = totalGainLoss >= 0 ? 'text-green-400' : 'text-red-400';
 
     return (
-        <div className="glass-card p-6 rounded-lg mt-6">
-            <h3 className="text-xl font-semibold mb-2">My Portfolio</h3>
-            <div className="mb-4">
-                <span className="text-3xl font-bold">{formatCurrency(portfolioValue)}</span>
-                <p className="text-gray-400 text-sm">Cash: {formatCurrency(cash)}</p>
+        <div className="glass-card rounded-lg p-6">
+            <h3 className="text-xl font-semibold mb-4">My Portfolio Summary</h3>
+            <div className="space-y-3">
+                <div>
+                    <p className="text-sm text-gray-400">Portfolio Value</p>
+                    <p className="text-2xl font-bold">{formatCurrency(portfolioValue)}</p>
+                </div>
+                <div>
+                    <p className="text-sm text-gray-400">Available Cash</p>
+                    <p className="text-lg">{formatCurrency(cash)}</p>
+                </div>
+                <div>
+                    <p className="text-sm text-gray-400">Total Gain/Loss</p>
+                    <p className={`text-lg font-semibold ${gainLossColor}`}>{formatCurrency(totalGainLoss)}</p>
+                </div>
+                <div>
+                    <p className="text-sm text-gray-400">24h Change</p>
+                    <p className="text-lg text-gray-500">N/A</p> 
+                </div>
             </div>
-            <table className="w-full text-left">
-                <thead className="border-b border-white/10">
-                    <tr>
-                        <th className="p-2">Symbol</th>
-                        <th className="p-2">Shares</th>
-                        <th className="p-2">Avg. Cost</th>
-                        <th className="p-2">Current Price</th>
-                        <th className="p-2">Total Value</th>
-                        <th className="p-2">Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {Object.keys(holdings).length > 0 ? (
-                        Object.entries(holdings).map(([sanitizedSymbol, data]) => {
-                            const currentValue = stockPrices[data.originalSymbol] || data.avgCost;
-                            const totalValue = currentValue * data.shares;
+        </div>
+    );
+};
+
+const DetailedPortfolioView = ({ participantData, onTrade, stockPrices }) => {
+    if (!participantData) return null;
+
+    const { holdings } = participantData;
+    const holdingsArray = Object.values(holdings || {});
+
+    if (holdingsArray.length === 0) {
+        return (
+            <div className="glass-card rounded-lg p-6 mt-8 text-center">
+                <h3 className="text-xl font-semibold mb-2">My Holdings</h3>
+                <p className="text-gray-400">You don't own any stocks yet. Use the search below to start trading!</p>
+            </div>
+        );
+    }
+    
+    return (
+        <div className="glass-card rounded-lg overflow-hidden mt-8">
+            <h3 className="text-xl font-semibold p-4 bg-white/10">My Holdings</h3>
+            <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                    <thead>
+                        <tr className="border-b border-white/10">
+                            <th className="p-4">Symbol</th>
+                            <th className="p-4 text-right">Shares</th>
+                            <th className="p-4 text-right">Basis / Share</th>
+                            <th className="p-4 text-right">Current Price</th>
+                            <th className="p-4 text-right">Total Basis</th>
+                            <th className="p-4 text-right">Market Value</th>
+                            <th className="p-4 text-right">Total Gain/Loss</th>
+                            <th className="p-4 text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {holdingsArray.map(data => {
+                            const sanitizedSymbol = sanitizeSymbolForFirestore(data.originalSymbol);
+                            const basisPerShare = data.avgCost;
+                            const currentPrice = stockPrices[data.originalSymbol] || basisPerShare;
+                            const totalBasis = data.totalCost;
+                            const marketValue = currentPrice * data.shares;
+                            const totalGainLoss = marketValue - totalBasis;
+                            const gainLossColor = totalGainLoss >= 0 ? 'text-green-400' : 'text-red-400';
+
                             return (
                                 <tr key={sanitizedSymbol} className="border-b border-white/20 last:border-0">
-                                    <td className="p-2 font-bold">{data.originalSymbol || sanitizedSymbol}</td>
-                                    <td className="p-2">{data.shares}</td>
-                                    <td className="p-2">{formatCurrency(data.avgCost)}</td>
-                                    <td className="p-2">{formatCurrency(currentValue)}</td>
-                                    <td className="p-2">{formatCurrency(totalValue)}</td>
-                                    <td className="p-2">
-                                        <button onClick={() => onTrade(data.originalSymbol || sanitizedSymbol)} className="bg-primary/50 text-xs py-1 px-2 rounded hover:bg-primary">Trade</button>
+                                    <td className="p-4 font-bold">{data.originalSymbol}</td>
+                                    <td className="p-4 text-right">{data.shares}</td>
+                                    <td className="p-4 text-right">{formatCurrency(basisPerShare)}</td>
+                                    <td className="p-4 text-right">{formatCurrency(currentPrice)}</td>
+                                    <td className="p-4 text-right">{formatCurrency(totalBasis)}</td>
+                                    <td className="p-4 text-right">{formatCurrency(marketValue)}</td>
+                                    <td className={`p-4 text-right font-semibold ${gainLossColor}`}>{formatCurrency(totalGainLoss)}</td>
+                                    <td className="p-4 text-center">
+                                        <button onClick={() => onTrade(data.originalSymbol)} className="bg-primary/50 text-xs py-1 px-2 rounded hover:bg-primary">Trade</button>
                                     </td>
                                 </tr>
                             )
-                        })
-                    ) : (
-                        <tr>
-                            <td colSpan="6" className="p-4 text-center text-gray-400">You don't own any stocks yet.</td>
-                        </tr>
-                    )}
-                </tbody>
-                {Object.keys(holdings).length > 0 && (
-                     <tfoot className="border-t-2 border-white/20 font-bold">
-                        <tr>
-                            <td className="p-2" colSpan="4">Total Stock Value</td>
-                            <td className="p-2">{formatCurrency(totalStockValue)}</td>
-                            <td className="p-2"></td>
-                        </tr>
-                    </tfoot>
-                )}
-            </table>
+                        })}
+                    </tbody>
+                </table>
+            </div>
         </div>
     );
 };
@@ -640,50 +668,43 @@ const StockSearchView = ({ onSelectStock, isTradingActive }) => {
     const [results, setResults] = useState([]);
     const [loading, setLoading] = useState(false);
 
-    useEffect(() => {
-        if (!isTradingActive || !searchTerm.trim()) {
-            setResults([]);
-            setLoading(false);
-            return;
-        }
-
-        setLoading(true);
-        const timerId = setTimeout(() => {
-            searchSymbols(searchTerm).then(searchResults => {
-                setResults(searchResults || []);
-                setLoading(false);
-            });
-        }, 500);
-
-        return () => {
-            clearTimeout(timerId);
-        };
-    }, [searchTerm, isTradingActive]);
-
     if (!isTradingActive) {
         return (
-            <div className="glass-card p-6 rounded-lg mt-6 text-center">
-                <h3 className="text-xl font-semibold mb-2">Search & Trade</h3>
-                <p className="text-gray-400">Trading is not active for this competition.</p>
+            <div className="glass-card p-6 rounded-lg mt-8 text-center">
+                <h3 className="text-xl font-semibold mb-2">Trading is Closed</h3>
+                <p className="text-gray-400">Trading is not currently active for this competition.</p>
             </div>
         )
     }
 
+    const handleSearch = async () => {
+        if (!searchTerm.trim()) {
+            setResults([]);
+            return;
+        }
+        setLoading(true);
+        const searchResults = await searchSymbols(searchTerm);
+        setResults(searchResults || []);
+        setLoading(false);
+    };
+
     return (
-        <div className="glass-card p-6 rounded-lg mt-6">
+        <div className="glass-card p-6 rounded-lg mt-8">
             <h3 className="text-xl font-semibold mb-4">Search & Trade</h3>
-            <div className="relative">
+            <div className="flex gap-2">
                 <input
                     type="text"
                     placeholder="Search by symbol or name (e.g., AAPL)"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full bg-black/20 p-3 pl-10 rounded-md border border-white/20"
+                    onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                    className="w-full bg-black/20 p-3 rounded-md border border-white/20"
                     spellCheck="false"
                 />
-                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><SearchIcon /></div>
+                <button onClick={handleSearch} className="py-2 px-4 rounded-md bg-primary hover:opacity-90">
+                    {loading ? '...' : <SearchIcon />}
+                </button>
             </div>
-            {loading && <p className="text-center mt-4">Searching...</p>}
             {results.length > 0 && (
                 <ul className="mt-4 max-h-60 overflow-y-auto">
                     {results.map(result => (
@@ -917,32 +938,25 @@ const CompetitionDetailPage = ({ user, competitionId, onBack }) => {
     }, [participantData]);
 
     useEffect(() => {
-        if (!participantData || !competition || Object.keys(stockPrices).length === 0) {
-            return;
-        }
+        if (!participantData || !competition) return;
 
+        const { holdings, cash } = participantData;
         const status = getCompetitionStatus(competition.startDate, competition.endDate);
         if (status.text !== 'Active') return;
 
-        const { cash, holdings, portfolioValue: currentPortfolioValue } = participantData;
-        
-        let totalStockValue = 0;
-        let allPricesAvailable = true;
+        const symbols = Object.keys(holdings || {});
+        const allPricesAvailable = symbols.every(symbol => stockPrices[holdings[symbol].originalSymbol] !== undefined);
 
-        Object.values(holdings).forEach(holding => {
-            const price = stockPrices[holding.originalSymbol];
-            if (price === undefined) {
-                allPricesAvailable = false;
-            } else {
-                totalStockValue += price * holding.shares;
-            }
-        });
+        if (!allPricesAvailable && symbols.length > 0) return; // Wait for all prices
 
-        if (!allPricesAvailable) return;
+        const totalStockValue = Object.values(holdings || {}).reduce((acc, holding) => {
+            const price = stockPrices[holding.originalSymbol] || holding.avgCost;
+            return acc + (price * holding.shares);
+        }, 0);
 
         const newPortfolioValue = cash + totalStockValue;
-        
-        if (Math.abs(newPortfolioValue - currentPortfolioValue) > 0.01) {
+
+        if (Math.abs(newPortfolioValue - participantData.portfolioValue) > 0.01) {
             const participantRef = doc(db, 'competitions', competitionId, 'participants', user.uid);
             updateDoc(participantRef, { portfolioValue: newPortfolioValue })
                 .catch(err => console.error("Error updating portfolio value:", err));
@@ -994,13 +1008,27 @@ const CompetitionDetailPage = ({ user, competitionId, onBack }) => {
             
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-6">
                 <div className="lg:col-span-2">
-                    <Leaderboard competitionId={competitionId} />
+                    <Leaderboard competitionId={competitionId} user={user} />
                 </div>
                 <div className="lg:col-span-1">
-                    <PortfolioView participantData={participantData} onTrade={setTradeModalSymbol} stockPrices={stockPrices} />
-                    <StockSearchView onSelectStock={setTradeModalSymbol} isTradingActive={isTradingActive} />
+                    <PortfolioSummaryCard 
+                        competition={competition}
+                        participantData={participantData} 
+                        stockPrices={stockPrices} 
+                    />
                 </div>
             </div>
+
+            <DetailedPortfolioView 
+                participantData={participantData}
+                onTrade={setTradeModalSymbol}
+                stockPrices={stockPrices}
+            />
+
+            <StockSearchView 
+                onSelectStock={setTradeModalSymbol} 
+                isTradingActive={isTradingActive} 
+            />
         </div>
     );
 };
