@@ -1,5 +1,5 @@
-import React, { useState, useEffect, Suspense } from 'react'; // FIX: Imported Suspense for lazy loading
-import { auth, db } from './firebase'; // Import from the new firebase.js file
+import React, { useState, useEffect, Suspense } from 'react';
+import { auth, db } from './firebase';
 import {
     onAuthStateChanged,
     createUserWithEmailAndPassword,
@@ -26,7 +26,7 @@ import {
 } from 'firebase/firestore';
 import { searchSymbols, getQuote } from './api';
 
-// FIX: Lazy load the AdminPage component. This means its code (and recharts) will only be downloaded when it's needed.
+// Lazy load the AdminPage component. This means its code (and recharts) will only be downloaded when it's needed.
 const AdminPage = React.lazy(() => import('./AdminPage'));
 
 
