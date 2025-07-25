@@ -1023,16 +1023,25 @@ const AdminPage = () => {
         const unsubscribeLogs = onSnapshot(query(collection(db, 'api_logs'), where('timestamp', '>=', twoDaysAgo)), (snapshot) => {
             const calls = snapshot.docs.map(doc => doc.data().timestamp.toDate());
             
+            // FIX: Group calls by a full ISO string key to preserve date and time for sorting.
             const callsByHour = calls.reduce((acc, callTime) => {
-                const hour = new Date(callTime.getFullYear(), callTime.getMonth(), callTime.getDate(), callTime.getHours()).toISOString();
-                acc[hour] = (acc[hour] || 0) + 1;
+                const hourKey = new Date(callTime.getFullYear(), callTime.getMonth(), callTime.getDate(), callTime.getHours()).toISOString();
+                acc[hourKey] = (acc[hourKey] || 0) + 1;
                 return acc;
             }, {});
 
-            const formattedData = Object.entries(callsByHour).map(([hour, count]) => ({
-                hour: new Date(hour).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
-                calls: count,
-            })).sort((a,b) => new Date('1970/01/01 ' + a.hour) - new Date('1970/01/01 ' + b.hour));
+            // FIX: Sort the data by the full date before mapping and formatting for the chart.
+            // This ensures the X-axis is always in chronological order.
+            const formattedData = Object.entries(callsByHour)
+                .sort(([hourA], [hourB]) => new Date(hourA) - new Date(hourB))
+                .map(([hourISO, count]) => {
+                    const date = new Date(hourISO);
+                    return {
+                        // FIX: Create a more descriptive label that includes the date and hour.
+                        timeLabel: `${date.getMonth() + 1}/${date.getDate()} ${date.getHours()}:00`,
+                        calls: count,
+                    };
+                });
 
             setChartData(formattedData);
 
@@ -1090,7 +1099,8 @@ const AdminPage = () => {
                             <ResponsiveContainer>
                                 <BarChart data={chartData}>
                                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.2)" />
-                                    <XAxis dataKey="hour" stroke="rgba(255, 255, 255, 0.7)" />
+                                    {/* FIX: Use the new 'timeLabel' as the data key for the X-axis. */}
+                                    <XAxis dataKey="timeLabel" stroke="rgba(255, 255, 255, 0.7)" />
                                     <YAxis stroke="rgba(255, 255, 255, 0.7)" />
                                     <Tooltip contentStyle={{ backgroundColor: 'rgba(30, 41, 59, 0.8)', border: '1px solid rgba(255, 255, 255, 0.2)' }} />
                                     <Legend wrapperStyle={{ color: 'rgba(255, 255, 255, 0.7)' }}/>
