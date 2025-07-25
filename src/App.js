@@ -25,6 +25,7 @@ import {
     updateDoc
 } from 'firebase/firestore';
 import { searchSymbols, getQuote } from './api';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 
 // --- Helper & Icon Components ---
@@ -1210,3 +1211,4 @@ function App() {
 }
 
 export default App;
+" in the docume
