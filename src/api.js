@@ -7,7 +7,6 @@ const ALPHA_VANTAGE_API_URL = 'https://www.alphavantage.co/query';
 
 /**
  * Logs a record of an API call to Firestore.
- * This should primarily be used for Alpha Vantage calls to monitor usage.
  */
 const logApiCall = async () => {
     try {
@@ -21,11 +20,9 @@ const logApiCall = async () => {
 
 /**
  * Returns a static, hardcoded list of the top cryptocurrencies.
- * This requires no API key and makes no network calls, making it free and reliable.
  */
 const getTopCryptos = () => {
-    console.log("Using hardcoded crypto list.");
-    return [
+    return [z
         { symbol: 'BTC', name: 'Bitcoin' },
         { symbol: 'ETH', name: 'Ethereum' },
         { symbol: 'USDT', name: 'Tether' },
@@ -65,13 +62,11 @@ export const searchSymbols = async (keywords) => {
         return [];
     }
 
-    // 1. Get the crypto list (instantly, from our hardcoded list) and start the stock search.
     const stockSearchPromise = fetch(`${ALPHA_VANTAGE_API_URL}?function=SYMBOL_SEARCH&keywords=${keywords}&apikey=${alphaVantageApiKey}`).then(res => res.json());
     const cryptoList = getTopCryptos();
-    logApiCall(); // Log the Alpha Vantage stock search call
+    logApiCall();
 
     try {
-        // 2. Filter the crypto list based on keywords
         const upperKeywords = keywords.toUpperCase();
         const cryptoResults = cryptoList
             .filter(({ symbol, name }) =>
@@ -85,7 +80,6 @@ export const searchSymbols = async (keywords) => {
                 '8. currency': 'USD'
             }));
 
-        // 3. Process stock results from the live API call
         const stockData = await stockSearchPromise;
         let stockResults = [];
         if (stockData.bestMatches) {
@@ -94,7 +88,6 @@ export const searchSymbols = async (keywords) => {
             console.warn('Alpha Vantage API Note (Stocks):', stockData.Note);
         }
 
-        // 4. Combine and return the results
         return [...cryptoResults, ...stockResults];
 
     } catch (error) {
@@ -104,9 +97,7 @@ export const searchSymbols = async (keywords) => {
 };
 
 /**
- * Fetches the latest price for a given stock or crypto symbol using Alpha Vantage.
- * This function now separates the logic for fetching stock vs. crypto prices
- * to ensure the correct API endpoint is always used.
+ * Fetches the latest price for a given stock or crypto symbol using the reliable GLOBAL_QUOTE endpoint.
  */
 export const getQuote = async (symbol) => {
     if (!symbol) return null;
@@ -115,57 +106,36 @@ export const getQuote = async (symbol) => {
         return null;
     }
 
-    // Check if the symbol is a cryptocurrency from our hardcoded list
-    const cryptoList = getTopCryptos();
-    const isCrypto = cryptoList.some(c => c.symbol === symbol);
+    logApiCall();
 
-    logApiCall(); // Log the API call regardless of type
-
-    if (isCrypto) {
-        // --- CRYPTOCURRENCY PRICE LOGIC ---
-        try {
-            const response = await fetch(`${ALPHA_VANTAGE_API_URL}?function=CURRENCY_EXCHANGE_RATE&from_currency=${symbol}&to_currency=USD&apikey=${alphaVantageApiKey}`);
-            const data = await response.json();
-            const exchangeRate = data['Realtime Currency Exchange Rate'];
+    try {
+        const response = await fetch(`${ALPHA_VANTAGE_API_URL}?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${alphaVantageApiKey}`);
+        const data = await response.json();
+        
+        if (data['Global Quote'] && Object.keys(data['Global Quote']).length > 0) {
+            return data['Global Quote'];
+        } else {
+            // If GLOBAL_QUOTE fails, it might be a crypto not supported by that endpoint.
+            // We will try the currency exchange endpoint as a fallback.
+            console.warn(`GLOBAL_QUOTE failed for ${symbol}. Trying fallback...`, data);
+            const cryptoResponse = await fetch(`${ALPHA_VANTAGE_API_URL}?function=CURRENCY_EXCHANGE_RATE&from_currency=${symbol}&to_currency=USD&apikey=${alphaVantageApiKey}`);
+            const cryptoData = await cryptoResponse.json();
+            const exchangeRate = cryptoData['Realtime Currency Exchange Rate'];
 
             if (exchangeRate && exchangeRate['5. Exchange Rate']) {
-                // Format the crypto data to look like a regular quote for consistency in the UI
                 return {
                     '01. symbol': exchangeRate['1. From_Currency Code'],
                     '02. name': exchangeRate['2. From_Currency Name'],
                     '05. price': exchangeRate['5. Exchange Rate'],
-                    '02. open': 'N/A',
-                    '03. high': 'N/A',
-                    '04. low': 'N/A',
-                    '06. volume': 'N/A',
-                    '07. latest trading day': 'N/A',
-                    '08. previous close': 'N/A',
-                    '09. change': '0', // This endpoint doesn't provide change info
+                    '09. change': '0',
                     '10. change percent': '0.00%'
                 };
-            } else {
-                console.warn("Crypto quote fetch failed for:", symbol, data);
-                return null;
             }
-        } catch (error) {
-            console.error(`Error fetching crypto quote for ${symbol}:`, error);
+            console.error("All quote fetches failed for symbol:", symbol, data, cryptoData);
             return null;
         }
-    } else {
-        // --- STOCK PRICE LOGIC ---
-        try {
-            const response = await fetch(`${ALPHA_VANTAGE_API_URL}?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${alphaVantageApiKey}`);
-            const data = await response.json();
-            
-            if (data['Global Quote'] && Object.keys(data['Global Quote']).length > 0) {
-                return data['Global Quote'];
-            } else {
-                console.warn("Stock quote fetch failed for:", symbol, data);
-                return null;
-            }
-        } catch (error) {
-            console.error(`Error fetching stock quote for ${symbol}:`, error);
-            return null;
-        }
+    } catch (error) {
+        console.error(`Error fetching quote for ${symbol}:`, error);
+        return null;
     }
 };
