@@ -63,6 +63,7 @@ const TrendingUpIcon = () => <Icon className="w-4 h-4 text-green-500" path="M13 
 const TrendingDownIcon = () => <Icon className="w-4 h-4 text-red-500" path="M13 17h8m0 0v-8m0 8l-8-8-4 4-6-6" />;
 const CalendarIcon = () => <Icon className="w-4 h-4 text-gray-400" path="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />;
 const UserAddIcon = () => <Icon path="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />;
+const TrophyIcon = () => <Icon className="w-4 h-4 text-yellow-400" path="M9 11l3-3 3 3m0 0l-3 3-3-3m3-3v12" />;
 
 
 // --- Authentication Page Component ---
@@ -236,7 +237,6 @@ const PendingInvitations = ({ user }) => {
 
     useEffect(() => {
         if (!user) return;
-        // FIX: Correctly query the invitations subcollection for the current user.
         const q = query(collectionGroup(db, 'invitations'), where('invitedUsername', '==', user.username));
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -273,7 +273,6 @@ const PendingInvitations = ({ user }) => {
                 participantIds: [...(comp.participantIds || []), user.uid]
             });
 
-            // Use the full path to the invitation document to delete it
             const inviteRef = doc(db, invite.path);
             batch.delete(inviteRef);
 
@@ -479,14 +478,26 @@ const Leaderboard = ({ competitionId }) => {
 
 const HomePage = ({ user, onSelectCompetition, onDeleteCompetition }) => {
     const [competitions, setCompetitions] = useState([]);
+    const [leaderboards, setLeaderboards] = useState({});
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         if (!user) return;
         const q = query(collection(db, 'competitions'), where('participantIds', 'array-contains', user.uid));
         const unsubscribe = onSnapshot(q, (snapshot) => {
-            setCompetitions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+            const comps = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setCompetitions(comps);
             setLoading(false);
+
+            // For each competition, listen to its participants for ranking
+            comps.forEach(comp => {
+                const participantsQuery = query(collection(db, 'competitions', comp.id, 'participants'));
+                onSnapshot(participantsQuery, (participantsSnapshot) => {
+                    const participants = participantsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    participants.sort((a, b) => b.portfolioValue - a.portfolioValue);
+                    setLeaderboards(prev => ({ ...prev, [comp.id]: participants }));
+                });
+            });
         });
         return () => unsubscribe();
     }, [user]);
@@ -506,15 +517,20 @@ const HomePage = ({ user, onSelectCompetition, onDeleteCompetition }) => {
                 <h1 className="text-4xl font-bold mb-6">Competitions You Own</h1>
                 {ownedCompetitions.length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {ownedCompetitions.map(comp => 
-                            <CompetitionCard 
-                                key={comp.id} 
-                                competition={comp} 
-                                user={user}
-                                onClick={() => onSelectCompetition(comp.id)}
-                                onDelete={() => onDeleteCompetition(comp)}
-                            />
-                        )}
+                        {ownedCompetitions.map(comp => {
+                            const rank = leaderboards[comp.id]?.findIndex(p => p.id === user.uid) + 1;
+                            return (
+                                <CompetitionCard 
+                                    key={comp.id} 
+                                    competition={comp} 
+                                    user={user}
+                                    rank={rank > 0 ? rank : null}
+                                    totalParticipants={leaderboards[comp.id]?.length || 0}
+                                    onClick={() => onSelectCompetition(comp.id)}
+                                    onDelete={() => onDeleteCompetition(comp)}
+                                />
+                            )
+                        })}
                     </div>
                 ) : (
                     <p>You haven't created any competitions yet. Click "Create Competition" to start one!</p>
@@ -525,15 +541,20 @@ const HomePage = ({ user, onSelectCompetition, onDeleteCompetition }) => {
                 <h1 className="text-4xl font-bold mb-6">Competitions You've Joined</h1>
                 {joinedCompetitions.length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {joinedCompetitions.map(comp => 
-                            <CompetitionCard 
-                                key={comp.id} 
-                                competition={comp} 
-                                user={user}
-                                onClick={() => onSelectCompetition(comp.id)}
-                                onDelete={() => onDeleteCompetition(comp)}
-                            />
-                        )}
+                        {joinedCompetitions.map(comp => {
+                            const rank = leaderboards[comp.id]?.findIndex(p => p.id === user.uid) + 1;
+                            return (
+                                <CompetitionCard 
+                                    key={comp.id} 
+                                    competition={comp} 
+                                    user={user}
+                                    rank={rank > 0 ? rank : null}
+                                    totalParticipants={leaderboards[comp.id]?.length || 0}
+                                    onClick={() => onSelectCompetition(comp.id)}
+                                    onDelete={() => onDeleteCompetition(comp)}
+                                />
+                            )
+                        })}
                     </div>
                 ) : (
                     <p>You haven't joined any competitions yet. Go to the Explore page to find one!</p>
@@ -543,7 +564,7 @@ const HomePage = ({ user, onSelectCompetition, onDeleteCompetition }) => {
     );
 };
 
-const CompetitionCard = ({ user, competition, onClick, onDelete, onJoin }) => {
+const CompetitionCard = ({ user, competition, onClick, onDelete, onJoin, rank, totalParticipants }) => {
     const status = getCompetitionStatus(competition.startDate, competition.endDate);
     const isOwner = user.uid === competition.ownerId;
     const isAdmin = user.role === 'admin';
@@ -571,8 +592,14 @@ const CompetitionCard = ({ user, competition, onClick, onDelete, onJoin }) => {
                     </div>
                     <div className="flex items-center text-gray-300 text-sm">
                         <UsersIcon />
-                        <span className="ml-2">{(competition.participantIds || []).length} players</span>
+                        <span className="ml-2">{totalParticipants || (competition.participantIds || []).length} players</span>
                     </div>
+                    {rank && (
+                        <div className="flex items-center text-yellow-400 text-sm font-bold">
+                            <TrophyIcon />
+                            <span className="ml-2">Your Rank: {rank} / {totalParticipants}</span>
+                        </div>
+                    )}
                 </div>
             </div>
             {(isAdmin || isOwner) && onDelete && (
