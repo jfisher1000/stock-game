@@ -779,9 +779,6 @@ const StockSearchView = ({ onSelectStock, isTradingActive }) => {
         setLoading(true);
         const timerId = setTimeout(() => {
             searchSymbols(searchTerm).then(searchResults => {
-                // --- DEBUGGING: Log the results received by the UI component ---
-                console.log('Search results received by UI:', searchResults);
-                // --- END DEBUGGING ---
                 setResults(searchResults || []);
                 setLoading(false);
             });
@@ -822,7 +819,7 @@ const StockSearchView = ({ onSelectStock, isTradingActive }) => {
                         <li
                             key={result['1. symbol']}
                             onClick={() => {
-                                onSelectStock(result); // UPDATED: Pass the whole result object
+                                onSelectStock(result);
                                 setSearchTerm('');
                                 setResults([]);
                             }}
@@ -844,16 +841,17 @@ const StockSearchView = ({ onSelectStock, isTradingActive }) => {
     );
 };
 
-const TradeModal = ({ user, competitionId, asset, onClose }) => { // UPDATED: prop name from 'symbol' to 'asset'
+const TradeModal = ({ user, competitionId, asset, stockPrices, onClose }) => {
     const [quote, setQuote] = useState(null);
     const [loading, setLoading] = useState(true);
     const [tradeType, setTradeType] = useState('buy');
-    const [shares, setShares] = useState(1);
+    const [shares, setShares] = useState('1'); // Use string to allow decimal input
     const [error, setError] = useState('');
     const [processing, setProcessing] = useState(false);
     
-    const symbol = asset['1. symbol']; // Extract symbol from asset object
-    const assetType = asset['3. type']; // Extract asset type
+    const symbol = asset['1. symbol'];
+    const assetType = asset['3. type'];
+    const isCrypto = assetType === 'Cryptocurrency';
 
     useEffect(() => {
         const fetchQuote = async () => {
@@ -866,7 +864,8 @@ const TradeModal = ({ user, competitionId, asset, onClose }) => { // UPDATED: pr
     }, [symbol]);
 
     const handleTrade = async () => {
-        if (!shares || shares <= 0) {
+        const tradeShares = parseFloat(shares);
+        if (isNaN(tradeShares) || tradeShares <= 0) {
             setError('Please enter a positive number of shares.');
             return;
         }
@@ -875,12 +874,12 @@ const TradeModal = ({ user, competitionId, asset, onClose }) => { // UPDATED: pr
 
         const price = parseFloat(quote['05. price']);
         if (isNaN(price)) {
-            setError('Could not determine stock price. Please try again.');
+            setError('Could not determine asset price. Please try again.');
             setProcessing(false);
             return;
         }
 
-        const totalCost = shares * price;
+        const totalCost = tradeShares * price;
         const participantRef = doc(db, 'competitions', competitionId, 'participants', user.uid);
         const sanitizedSymbol = sanitizeSymbolForFirestore(symbol);
 
@@ -894,54 +893,62 @@ const TradeModal = ({ user, competitionId, asset, onClose }) => { // UPDATED: pr
                 const data = participantDoc.data();
                 const currentCash = data.cash;
                 const currentHoldings = data.holdings || {};
+                let newHoldings = { ...currentHoldings };
+                let newCash;
 
                 if (tradeType === 'buy') {
                     if (currentCash < totalCost) {
                         throw new Error("Not enough cash to complete this purchase.");
                     }
-                    const newCash = currentCash - totalCost;
-                    const existingHolding = currentHoldings[sanitizedSymbol] || { shares: 0, totalCost: 0 };
+                    newCash = currentCash - totalCost;
+                    const existingHolding = newHoldings[sanitizedSymbol] || { shares: 0, totalCost: 0 };
                     
-                    const newShares = existingHolding.shares + shares;
+                    const newShares = existingHolding.shares + tradeShares;
                     const newTotalCost = existingHolding.totalCost + totalCost;
                     const newAvgCost = newTotalCost / newShares;
                     
-                    transaction.update(participantRef, {
-                        cash: newCash,
-                        [`holdings.${sanitizedSymbol}`]: { 
-                            shares: newShares, 
-                            avgCost: newAvgCost, 
-                            totalCost: newTotalCost, 
-                            name: asset['2. name'] || symbol, // **FIX**: Use asset name from search, not quote
-                            originalSymbol: symbol,
-                            assetType: assetType || 'Equity'
-                        }
-                    });
+                    newHoldings[sanitizedSymbol] = { 
+                        shares: newShares, 
+                        avgCost: newAvgCost, 
+                        totalCost: newTotalCost, 
+                        name: asset['2. name'] || symbol,
+                        originalSymbol: symbol,
+                        assetType: assetType || 'Equity'
+                    };
 
                 } else { // Sell
-                    const existingHolding = currentHoldings[sanitizedSymbol];
-                    if (!existingHolding || shares > existingHolding.shares) {
+                    const existingHolding = newHoldings[sanitizedSymbol];
+                    if (!existingHolding || tradeShares > existingHolding.shares) {
                         throw new Error("You don't own enough shares to sell.");
                     }
-                    const newCash = currentCash + totalCost;
-                    const newShares = existingHolding.shares - shares;
+                    newCash = currentCash + totalCost;
+                    const newShares = existingHolding.shares - tradeShares;
                     
-                    if (newShares === 0) {
-                        const newHoldings = { ...currentHoldings };
+                    if (newShares < 0.00001) { // Use a small threshold for float comparison
                         delete newHoldings[sanitizedSymbol];
-                        transaction.update(participantRef, { 
-                            cash: newCash, 
-                            holdings: newHoldings,
-                        });
                     } else {
-                        const newTotalCost = existingHolding.totalCost - (shares * existingHolding.avgCost);
-                        transaction.update(participantRef, {
-                            cash: newCash,
-                            [`holdings.${sanitizedSymbol}.shares`]: newShares,
-                            [`holdings.${sanitizedSymbol}.totalCost`]: newTotalCost,
-                        });
+                        const newTotalCost = existingHolding.totalCost - (tradeShares * existingHolding.avgCost);
+                        newHoldings[sanitizedSymbol] = {
+                            ...existingHolding,
+                            shares: newShares,
+                            totalCost: newTotalCost,
+                        };
                     }
                 }
+
+                // Recalculate total portfolio value
+                let newTotalStockValue = 0;
+                for (const holding of Object.values(newHoldings)) {
+                    const holdingPrice = stockPrices[holding.originalSymbol]?.price || holding.avgCost;
+                    newTotalStockValue += holdingPrice * holding.shares;
+                }
+                const newPortfolioValue = newCash + newTotalStockValue;
+
+                transaction.update(participantRef, {
+                    cash: newCash,
+                    holdings: newHoldings,
+                    portfolioValue: newPortfolioValue
+                });
             });
             onClose();
         } catch (e) {
@@ -954,6 +961,7 @@ const TradeModal = ({ user, competitionId, asset, onClose }) => { // UPDATED: pr
     const currentPrice = quote ? parseFloat(quote['05. price']) : 0;
     const change = quote ? parseFloat(quote['09. change']) : 0;
     const isPositiveChange = change >= 0;
+    const totalValue = isNaN(parseFloat(shares)) ? 0 : parseFloat(shares) * currentPrice;
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -975,10 +983,17 @@ const TradeModal = ({ user, competitionId, asset, onClose }) => { // UPDATED: pr
                         </div>
                         <div className="mb-4">
                             <label className="block mb-2">Shares</label>
-                            <input type="number" min="1" value={shares} onChange={e => setShares(parseInt(e.target.value, 10) || 0)} className="w-full bg-black/20 p-3 rounded-md border border-white/20" />
+                            <input 
+                                type="number" 
+                                value={shares} 
+                                onChange={e => setShares(e.target.value)}
+                                step={isCrypto ? "0.01" : "1"}
+                                min={isCrypto ? "0.01" : "1"}
+                                className="w-full bg-black/20 p-3 rounded-md border border-white/20" 
+                            />
                         </div>
                         <div className="text-lg font-bold mb-4">
-                            Total: {formatCurrency(shares * currentPrice)}
+                            Total: {formatCurrency(totalValue)}
                         </div>
                         {error && <p className="text-danger mb-4">{error}</p>}
                         <div className="flex justify-end gap-4">
@@ -999,10 +1014,10 @@ const CompetitionDetailPage = ({ user, competitionId, onBack, onDeleteCompetitio
     const [competition, setCompetition] = useState(null);
     const [participantData, setParticipantData] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [tradeModalAsset, setTradeModalAsset] = useState(null); // UPDATED: from symbol to asset
+    const [tradeModalAsset, setTradeModalAsset] = useState(null);
     const [isInviteModalOpen, setInviteModalOpen] = useState(false);
     const [stockPrices, setStockPrices] = useState({});
-    const [showDetailedPortfolio, setShowDetailedPortfolio] = useState(false); // NEW: State for view toggle
+    const [showDetailedPortfolio, setShowDetailedPortfolio] = useState(false);
 
     useEffect(() => {
         const compRef = doc(db, 'competitions', competitionId);
@@ -1099,15 +1114,13 @@ const CompetitionDetailPage = ({ user, competitionId, onBack, onDeleteCompetitio
     const isAdmin = user.role === 'admin';
     const canInvite = competition.isPublic || isOwner || isAdmin;
     
-    // NEW: Function to open trade modal from detailed view
     const handleTradeFromDetailed = (symbol) => {
         const holding = Object.values(participantData.holdings).find(h => h.originalSymbol === symbol);
         const asset = { '1. symbol': symbol, '3. type': holding?.assetType || 'Equity' };
         setTradeModalAsset(asset);
-        setShowDetailedPortfolio(false); // Go back to the main competition view to show the modal
+        setShowDetailedPortfolio(false);
     };
     
-    // NEW: Conditional rendering for detailed portfolio
     if (showDetailedPortfolio) {
         return (
             <Suspense fallback={<div className="p-8 text-white">Loading Portfolio...</div>}>
@@ -1128,6 +1141,7 @@ const CompetitionDetailPage = ({ user, competitionId, onBack, onDeleteCompetitio
                     user={user}
                     competitionId={competitionId} 
                     asset={tradeModalAsset} 
+                    stockPrices={stockPrices}
                     onClose={() => setTradeModalAsset(null)} 
                 />
             )}
@@ -1171,7 +1185,7 @@ const CompetitionDetailPage = ({ user, competitionId, onBack, onDeleteCompetitio
                         participantData={participantData} 
                         onTrade={setTradeModalAsset} 
                         stockPrices={stockPrices}
-                        onViewDetails={() => setShowDetailedPortfolio(true)} // NEW: Pass handler
+                        onViewDetails={() => setShowDetailedPortfolio(true)}
                     />
                     <StockSearchView onSelectStock={setTradeModalAsset} isTradingActive={isTradingActive} />
                 </div>
