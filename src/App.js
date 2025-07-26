@@ -779,6 +779,9 @@ const StockSearchView = ({ onSelectStock, isTradingActive }) => {
         setLoading(true);
         const timerId = setTimeout(() => {
             searchSymbols(searchTerm).then(searchResults => {
+                // --- DEBUGGING: Log the results received by the UI component ---
+                console.log('Search results received by UI:', searchResults);
+                // --- END DEBUGGING ---
                 setResults(searchResults || []);
                 setLoading(false);
             });
