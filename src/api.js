@@ -42,11 +42,15 @@ const getDigitalCurrencyList = async () => {
     try {
         const response = await fetch(`${API_URL}?function=DIGITAL_CURRENCY_LIST&apikey=${apiKey}`);
         // The API returns this data as a CSV string, not JSON.
-        const csvData = await response.text(); 
+        const csvData = await response.text();
+        
+        // --- NEW DEBUGGING STEP ---
+        console.log("Raw response from DIGITAL_CURRENCY_LIST:", csvData);
+        // --- END NEW DEBUGGING STEP ---
         
         // Handle API errors or rate limiting messages which are returned as text/html
         if (!csvData || typeof csvData !== 'string' || !csvData.startsWith('currency code,currency name')) {
-             console.error('Could not fetch or parse digital currency list. Response:', csvData);
+             console.error('Could not fetch or parse digital currency list. The response was not a valid CSV.');
              cache.digitalList = []; // Cache empty array on failure
              return [];
         }
