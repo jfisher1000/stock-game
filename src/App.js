@@ -884,11 +884,15 @@ const TradeModal = ({ user, competitionId, asset, stockPrices, onClose }) => {
         const sanitizedSymbol = sanitizeSymbolForFirestore(symbol);
 
         try {
+            console.log("Starting Firestore transaction...");
             await runTransaction(db, async (transaction) => {
+                console.log("Inside transaction: Reading participant document...");
                 const participantDoc = await transaction.get(participantRef);
+                
                 if (!participantDoc.exists()) {
                     throw new Error("Your participant data could not be found.");
                 }
+                console.log("Inside transaction: Participant document read successfully.");
 
                 const data = participantDoc.data();
                 const currentCash = data.cash;
@@ -936,24 +940,31 @@ const TradeModal = ({ user, competitionId, asset, stockPrices, onClose }) => {
                     }
                 }
 
-                // Recalculate total portfolio value
+                console.log("Inside transaction: Calculations complete. Preparing update.");
+                
                 let newTotalStockValue = 0;
                 for (const holding of Object.values(newHoldings)) {
                     const holdingPrice = stockPrices[holding.originalSymbol]?.price || holding.avgCost;
                     newTotalStockValue += holdingPrice * holding.shares;
                 }
                 const newPortfolioValue = newCash + newTotalStockValue;
-
-                transaction.update(participantRef, {
+                
+                const updatePayload = {
                     cash: newCash,
                     holdings: newHoldings,
                     portfolioValue: newPortfolioValue
-                });
+                };
+                
+                console.log("Inside transaction: Updating document with payload:", updatePayload);
+                transaction.update(participantRef, updatePayload);
+                console.log("Inside transaction: Update command issued.");
             });
+            console.log("Firestore transaction completed successfully.");
             onClose();
         } catch (e) {
-            console.error("Transaction failed: ", e);
-            setError(e.message || "An unexpected error occurred during the transaction.");
+            console.error("Firestore transaction failed:", e);
+            setError(`Transaction failed: ${e.message} (Code: ${e.code})`);
+        } finally {
             setProcessing(false);
         }
     };
