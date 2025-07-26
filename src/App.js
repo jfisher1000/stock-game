@@ -237,9 +237,13 @@ const PendingInvitations = ({ user }) => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        if (!user?.username) return; 
+        if (!user?.username) {
+            setLoading(false);
+            return;
+        };
         
-        // **FIX**: Corrected the query to look for the current user in the `invitedUsername` field.
+        // This query requires a composite index in Firestore.
+        // The error message in the console will provide a direct link to create it.
         const q = query(collectionGroup(db, 'invitations'), where('invitedUsername', '==', user.username));
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -247,7 +251,7 @@ const PendingInvitations = ({ user }) => {
             setInvitations(fetchedInvites);
             setLoading(false);
         }, err => {
-            console.error("Error fetching invitations. You may need a composite index.", err);
+            console.error("Error fetching invitations. You may need to create a composite index in Firestore.", err);
             setLoading(false);
         });
 
