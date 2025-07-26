@@ -26,7 +26,7 @@ import {
 } from 'firebase/firestore';
 import { searchSymbols, getQuote } from './api';
 
-// Lazy load the AdminPage component. This means its code (and recharts) will only be downloaded when it's needed.
+// Lazy load the AdminPage component. This means its code will only be downloaded when it's needed.
 const AdminPage = React.lazy(() => import('./AdminPage'));
 
 
@@ -55,8 +55,7 @@ const ProfileIcon = () => <Icon path="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 
 const LogoutIcon = () => <Icon path="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />;
 const AdminIcon = () => <Icon path="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />;
 const PlusIcon = () => <Icon path="M12 4v16m8-8H4" />;
-const LockClosedIcon = () => <Icon className="w-4 h-4 text-gray-400" path="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />;
-const LockOpenIcon = () => <Icon className="w-4 h-4 text-green-400" path="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />;
+const TrashIcon = ({ className = "w-5 h-5" }) => <Icon className={className} path="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />;
 const UsersIcon = () => <Icon className="w-4 h-4 text-gray-400" path="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 3a4 4 0 014 4v2" />;
 const SearchIcon = () => <Icon path="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />;
 const TrendingUpIcon = () => <Icon className="w-4 h-4 text-green-500" path="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />;
@@ -113,6 +112,21 @@ const AuthPage = () => {
         </div>
     );
 };
+
+// --- General Purpose Modal ---
+const ConfirmDeleteModal = ({ title, body, onConfirm, onCancel }) => (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+        <div className="glass-card p-8 rounded-lg w-full max-w-md text-white text-center">
+            <h2 className="text-2xl font-bold mb-4">{title}</h2>
+            <p className="mb-6">{body}</p>
+            <div className="flex justify-center gap-4">
+                <button onClick={onCancel} className="py-2 px-6 rounded-md hover:bg-white/10">Cancel</button>
+                <button onClick={onConfirm} className="py-2 px-6 rounded-md bg-danger hover:opacity-90">Delete</button>
+            </div>
+        </div>
+    </div>
+);
+
 
 // --- Invitation Components ---
 
@@ -439,7 +453,7 @@ const Leaderboard = ({ competitionId }) => {
     );
 };
 
-const MyCompetitionsPage = ({ user, onSelectCompetition }) => {
+const MyCompetitionsPage = ({ user, onSelectCompetition, onDeleteCompetition }) => {
     const [competitions, setCompetitions] = useState([]);
     const [loading, setLoading] = useState(true);
 
@@ -463,43 +477,64 @@ const MyCompetitionsPage = ({ user, onSelectCompetition }) => {
                 <p>You haven't joined any competitions yet. Go to Explore to find one!</p>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {competitions.map(comp => <CompetitionCard key={comp.id} competition={comp} onClick={() => onSelectCompetition(comp.id)} />)}
+                    {competitions.map(comp => 
+                        <CompetitionCard 
+                            key={comp.id} 
+                            competition={comp} 
+                            user={user}
+                            onClick={() => onSelectCompetition(comp.id)}
+                            onDelete={() => onDeleteCompetition(comp)}
+                        />
+                    )}
                 </div>
             )}
         </div>
     );
 };
 
-const CompetitionCard = ({ competition, onClick }) => {
+const CompetitionCard = ({ user, competition, onClick, onDelete }) => {
     const status = getCompetitionStatus(competition.startDate, competition.endDate);
+    const isOwner = user.uid === competition.ownerId;
+    const isAdmin = user.role === 'admin';
+
+    const handleDelete = (e) => {
+        e.stopPropagation(); // Prevent card click event from firing
+        onDelete();
+    };
+
     return (
-        <button 
-            onClick={onClick} 
-            className="glass-card p-6 rounded-lg cursor-pointer hover:border-primary/50 border border-transparent transition-all text-left w-full flex flex-col"
-        >
-            <div className="flex justify-between items-start">
-                <h3 className="text-xl font-bold mb-2">{competition.name}</h3>
-                <span className={`text-xs font-bold px-2 py-1 rounded-full ${status.color}`}>{status.text}</span>
-            </div>
-            <div className="flex-grow">
+        <div className="glass-card p-6 rounded-lg flex flex-col hover:border-primary/50 border border-transparent transition-all">
+            <div onClick={onClick} className="cursor-pointer flex-grow">
+                <div className="flex justify-between items-start">
+                    <h3 className="text-xl font-bold mb-2">{competition.name}</h3>
+                    <span className={`text-xs font-bold px-2 py-1 rounded-full ${status.color}`}>{status.text}</span>
+                </div>
                 <p className="text-gray-400">Owner: {competition.ownerName}</p>
                 <p className="text-gray-400">Starts with {formatCurrency(competition.startingCash)}</p>
-            </div>
-            <div className="mt-4 space-y-2">
-                 <div className="flex items-center text-gray-300 text-sm">
-                    <CalendarIcon />
-                    <span className="ml-2">
-                        {formatDate(competition.startDate)} - {formatDate(competition.endDate)}
-                    </span>
+                <div className="mt-4 space-y-2">
+                    <div className="flex items-center text-gray-300 text-sm">
+                        <CalendarIcon />
+                        <span className="ml-2">
+                            {formatDate(competition.startDate)} - {formatDate(competition.endDate)}
+                        </span>
+                    </div>
+                    <div className="flex items-center text-gray-300 text-sm">
+                        <UsersIcon />
+                        <span className="ml-2">{(competition.participantIds || []).length} players</span>
+                    </div>
                 </div>
-                <div className="flex items-center text-gray-300 text-sm">
-                    <UsersIcon />
-                    <span className="ml-2">{(competition.participantIds || []).length} players</span>
-                </div>
             </div>
-        </button>
+            {(isAdmin || isOwner) && (
+                <div className="border-t border-white/10 mt-4 pt-4 flex justify-end">
+                    <button onClick={handleDelete} className="text-danger hover:text-red-400 flex items-center gap-1 text-sm">
+                        <TrashIcon className="w-4 h-4" /> Delete
+                    </button>
+                </div>
+            )}
+        </div>
     );
 };
+
 
 const ExplorePage = ({ user }) => {
     const [competitions, setCompetitions] = useState([]);
@@ -555,7 +590,15 @@ const ExplorePage = ({ user }) => {
              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {competitions.map(comp => (
                     <div key={comp.id} className="glass-card p-6 rounded-lg flex flex-col">
-                        <CompetitionCard competition={comp} onClick={() => {}} />
+                        <div className="flex-grow">
+                            <h3 className="text-xl font-bold mb-2">{comp.name}</h3>
+                            <p className="text-gray-400">Owner: {comp.ownerName}</p>
+                            <p className="text-gray-400">Starts with {formatCurrency(comp.startingCash)}</p>
+                             <div className="mt-4 space-y-2">
+                                <div className="flex items-center text-gray-300 text-sm"><CalendarIcon /><span className="ml-2">{formatDate(comp.startDate)} - {formatDate(comp.endDate)}</span></div>
+                                <div className="flex items-center text-gray-300 text-sm"><UsersIcon /><span className="ml-2">{(comp.participantIds || []).length} players</span></div>
+                            </div>
+                        </div>
                         <button 
                             onClick={() => handleJoin(comp)}
                             disabled={(comp.participantIds || []).includes(user.uid)}
@@ -861,7 +904,7 @@ const TradeModal = ({ user, competitionId, symbol, onClose }) => {
 };
 
 
-const CompetitionDetailPage = ({ user, competitionId, onBack }) => {
+const CompetitionDetailPage = ({ user, competitionId, onBack, onDeleteCompetition }) => {
     const [competition, setCompetition] = useState(null);
     const [participantData, setParticipantData] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -874,6 +917,9 @@ const CompetitionDetailPage = ({ user, competitionId, onBack }) => {
         const unsubscribeComp = onSnapshot(compRef, (doc) => {
             if (doc.exists()) {
                 setCompetition({ id: doc.id, ...doc.data() });
+            } else {
+                // If competition is deleted while viewing, go back
+                onBack();
             }
             setLoading(false);
         });
@@ -889,7 +935,7 @@ const CompetitionDetailPage = ({ user, competitionId, onBack }) => {
             unsubscribeComp();
             unsubscribeParticipant();
         };
-    }, [competitionId, user.uid]);
+    }, [competitionId, user.uid, onBack]);
 
     useEffect(() => {
         if (!participantData || !participantData.holdings) {
@@ -903,6 +949,7 @@ const CompetitionDetailPage = ({ user, competitionId, onBack }) => {
         }
 
         const unsubscribers = symbols.map(symbol => {
+            if (!symbol) return () => {};
             const docRef = doc(db, 'market_data', symbol);
             return onSnapshot(docRef, (doc) => {
                 if (doc.exists()) {
@@ -959,7 +1006,9 @@ const CompetitionDetailPage = ({ user, competitionId, onBack }) => {
 
     const status = getCompetitionStatus(competition.startDate, competition.endDate);
     const isTradingActive = status.text === 'Active';
-    const canInvite = competition.isPublic || competition.ownerId === user.uid;
+    const isOwner = user.uid === competition.ownerId;
+    const isAdmin = user.role === 'admin';
+    const canInvite = competition.isPublic || isOwner || isAdmin;
 
     return (
         <div className="p-8 text-white">
@@ -978,13 +1027,20 @@ const CompetitionDetailPage = ({ user, competitionId, onBack }) => {
                     onClose={() => setInviteModalOpen(false)}
                 />
             )}
-            <div className="flex justify-between items-center mb-6">
+            <div className="flex justify-between items-start mb-6">
                  <button onClick={onBack} className="text-primary hover:underline">{'< Back to My Competitions'}</button>
-                 {canInvite && (
-                     <button onClick={() => setInviteModalOpen(true)} className="bg-primary/80 hover:bg-primary text-white font-bold py-2 px-4 rounded-md flex items-center gap-2">
-                        <UserAddIcon /> Invite Players
-                    </button>
-                 )}
+                 <div className="flex items-center gap-4">
+                    {canInvite && (
+                        <button onClick={() => setInviteModalOpen(true)} className="bg-primary/80 hover:bg-primary text-white font-bold py-2 px-4 rounded-md flex items-center gap-2">
+                            <UserAddIcon /> Invite Players
+                        </button>
+                    )}
+                    {(isAdmin || isOwner) && (
+                         <button onClick={() => onDeleteCompetition(competition)} className="bg-danger/80 hover:bg-danger text-white font-bold py-2 px-4 rounded-md flex items-center gap-2">
+                            <TrashIcon className="w-5 h-5" /> Delete
+                        </button>
+                    )}
+                 </div>
             </div>
             
             <div className="flex items-center gap-4">
@@ -1040,6 +1096,7 @@ function App() {
     const [activeTab, setActiveTab] = useState('competitions');
     const [isCreateModalOpen, setCreateModalOpen] = useState(false);
     const [selectedCompetitionId, setSelectedCompetitionId] = useState(null);
+    const [competitionToDelete, setCompetitionToDelete] = useState(null);
 
 
     useEffect(() => {
@@ -1067,23 +1124,57 @@ function App() {
         setSelectedCompetitionId(null);
     }
 
+    const handleDeleteCompetitionClick = (competition) => {
+        setCompetitionToDelete(competition);
+    };
+
+    const handleConfirmDeleteCompetition = async () => {
+        if (!competitionToDelete) return;
+        try {
+            await deleteDoc(doc(db, 'competitions', competitionToDelete.id));
+            // If the deleted competition was being viewed, go back to the list
+            if (selectedCompetitionId === competitionToDelete.id) {
+                setSelectedCompetitionId(null);
+            }
+        } catch (error) {
+            console.error("Error deleting competition:", error);
+            alert("Failed to delete competition.");
+        } finally {
+            setCompetitionToDelete(null);
+        }
+    };
+
     const renderContent = () => {
         if (selectedCompetitionId) {
-            return <CompetitionDetailPage user={user} competitionId={selectedCompetitionId} onBack={() => setSelectedCompetitionId(null)} />;
+            return (
+                <CompetitionDetailPage 
+                    user={user} 
+                    competitionId={selectedCompetitionId} 
+                    onBack={() => setSelectedCompetitionId(null)} 
+                    onDeleteCompetition={handleDeleteCompetitionClick}
+                />
+            );
         }
         switch (activeTab) {
             case 'competitions':
-                return <MyCompetitionsPage user={user} onSelectCompetition={setSelectedCompetitionId} />;
+                return (
+                    <MyCompetitionsPage 
+                        user={user} 
+                        onSelectCompetition={setSelectedCompetitionId} 
+                        onDeleteCompetition={handleDeleteCompetitionClick}
+                    />
+                );
             case 'explore':
                 return <ExplorePage user={user} />;
             case 'admin':
                 if (user?.role === 'admin') {
                     return <AdminPage />;
                 } else {
-                    return <MyCompetitionsPage user={user} onSelectCompetition={setSelectedCompetitionId} />;
+                     setActiveTab('competitions'); // Fallback for non-admins
+                     return <MyCompetitionsPage user={user} onSelectCompetition={setSelectedCompetitionId} onDeleteCompetition={handleDeleteCompetitionClick}/>;
                 }
             default:
-                return <MyCompetitionsPage user={user} onSelectCompetition={setSelectedCompetitionId} />;
+                return <MyCompetitionsPage user={user} onSelectCompetition={setSelectedCompetitionId} onDeleteCompetition={handleDeleteCompetitionClick}/>;
         }
     };
 
@@ -1096,6 +1187,14 @@ function App() {
             {user ? (
                 <>
                     {isCreateModalOpen && <CreateCompetitionModal user={user} onClose={() => setCreateModalOpen(false)} />}
+                    {competitionToDelete && (
+                        <ConfirmDeleteModal 
+                            title="Confirm Competition Deletion"
+                            body={`Are you sure you want to permanently delete the competition "${competitionToDelete.name}"? This action cannot be undone.`}
+                            onConfirm={handleConfirmDeleteCompetition}
+                            onCancel={() => setCompetitionToDelete(null)}
+                        />
+                    )}
                     <SideBar user={user} activeTab={activeTab} onNavigate={handleNavigation} />
                     <main className="flex-grow">
                         <div className="p-8 pb-0 text-right">
@@ -1103,7 +1202,6 @@ function App() {
                                 <PlusIcon /> Create Competition
                             </button>
                         </div>
-                        {/* FIX: Wrap the content in a Suspense boundary to handle lazy loading */}
                         <Suspense fallback={<div className="p-8 text-white">Loading Page...</div>}>
                             {renderContent()}
                         </Suspense>
