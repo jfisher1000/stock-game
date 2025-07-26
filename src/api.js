@@ -37,6 +37,10 @@ export const searchSymbols = async (keywords) => {
         const response = await fetch(searchUrl);
         const data = await response.json();
 
+        // --- DEBUGGING: Log the raw API response ---
+        console.log('Raw Alpha Vantage API Response:', data);
+        // --- END DEBUGGING ---
+
         if (data.bestMatches) {
             // The API returns both stocks and cryptos. No further action needed.
             return data.bestMatches;
