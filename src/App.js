@@ -237,10 +237,9 @@ const PendingInvitations = ({ user }) => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        // **FIX**: Check for user.username to prevent running the query before user data is fully loaded.
         if (!user?.username) return; 
         
-        // **FIX**: Depend on the stable user.username instead of the whole user object.
+        // **FIX**: Corrected the query to look for the current user in the `invitedUsername` field.
         const q = query(collectionGroup(db, 'invitations'), where('invitedUsername', '==', user.username));
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -906,9 +905,9 @@ const TradeModal = ({ user, competitionId, asset, onClose }) => { // UPDATED: pr
                             shares: newShares, 
                             avgCost: newAvgCost, 
                             totalCost: newTotalCost, 
-                            name: quote['2. name'] || symbol,
+                            name: asset['2. name'] || symbol, // **FIX**: Use asset name from search, not quote
                             originalSymbol: symbol,
-                            assetType: assetType || 'Equity' // UPDATED: Save asset type
+                            assetType: assetType || 'Equity'
                         }
                     });
 
@@ -955,7 +954,7 @@ const TradeModal = ({ user, competitionId, asset, onClose }) => { // UPDATED: pr
                 {loading ? <p>Loading quote...</p> : !quote ? <p>Could not retrieve quote for {symbol}.</p> : (
                     <>
                         <h2 className="text-2xl font-bold mb-1">{symbol}</h2>
-                        <p className="text-gray-400 mb-4">{quote['2. name'] || 'N/A'}</p>
+                        <p className="text-gray-400 mb-4">{asset['2. name'] || 'N/A'}</p>
                         <div className="text-4xl font-bold mb-1 flex items-center gap-4">
                             {formatCurrency(currentPrice)}
                             <span className={`text-lg font-semibold flex items-center ${isPositiveChange ? 'text-green-500' : 'text-red-500'}`}>
