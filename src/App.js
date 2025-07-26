@@ -436,7 +436,7 @@ const CreateCompetitionModal = ({ user, onClose }) => {
     );
 };
 
-const Leaderboard = ({ competitionId }) => {
+const Leaderboard = ({ competitionId, userId }) => {
     const [participants, setParticipants] = useState([]);
 
     useEffect(() => {
@@ -463,7 +463,7 @@ const Leaderboard = ({ competitionId }) => {
                     </thead>
                     <tbody>
                         {participants.map((p, index) => (
-                            <tr key={p.id} className="border-b border-white/10 last:border-b-0">
+                            <tr key={p.id} className={`border-b border-white/10 last:border-b-0 ${p.id === userId ? 'bg-primary/20' : ''}`}>
                                 <td className="p-4">{index + 1}</td>
                                 <td className="p-4">{p.username}</td>
                                 <td className="p-4 text-right">{formatCurrency(p.portfolioValue)}</td>
@@ -711,8 +711,6 @@ const PortfolioView = ({ participantData, onTrade, stockPrices }) => {
                     <tr>
                         <th className="p-2">Symbol</th>
                         <th className="p-2">Shares</th>
-                        <th className="p-2">Avg. Cost</th>
-                        <th className="p-2">Current Price</th>
                         <th className="p-2">Total Value</th>
                         <th className="p-2">Actions</th>
                     </tr>
@@ -726,8 +724,6 @@ const PortfolioView = ({ participantData, onTrade, stockPrices }) => {
                                 <tr key={sanitizedSymbol} className="border-b border-white/20 last:border-0">
                                     <td className="p-2 font-bold">{data.originalSymbol || sanitizedSymbol}</td>
                                     <td className="p-2">{data.shares}</td>
-                                    <td className="p-2">{formatCurrency(data.avgCost)}</td>
-                                    <td className="p-2">{formatCurrency(currentValue)}</td>
                                     <td className="p-2">{formatCurrency(totalValue)}</td>
                                     <td className="p-2">
                                         <button onClick={() => onTrade(data.originalSymbol || sanitizedSymbol)} className="bg-primary/50 text-xs py-1 px-2 rounded hover:bg-primary">Trade</button>
@@ -737,14 +733,14 @@ const PortfolioView = ({ participantData, onTrade, stockPrices }) => {
                         })
                     ) : (
                         <tr>
-                            <td colSpan="6" className="p-4 text-center text-gray-400">You don't own any stocks yet.</td>
+                            <td colSpan="4" className="p-4 text-center text-gray-400">You don't own any stocks yet.</td>
                         </tr>
                     )}
                 </tbody>
                 {Object.keys(holdings).length > 0 && (
                      <tfoot className="border-t-2 border-white/20 font-bold">
                         <tr>
-                            <td className="p-2" colSpan="4">Total Stock Value</td>
+                            <td className="p-2" colSpan="2">Total Stock Value</td>
                             <td className="p-2">{formatCurrency(totalStockValue)}</td>
                             <td className="p-2"></td>
                         </tr>
@@ -1127,7 +1123,7 @@ const CompetitionDetailPage = ({ user, competitionId, onBack, onDeleteCompetitio
             
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-6">
                 <div className="lg:col-span-2">
-                    <Leaderboard competitionId={competitionId} />
+                    <Leaderboard competitionId={competitionId} userId={user.uid} />
                 </div>
                 <div className="lg:col-span-1">
                     <PortfolioView participantData={participantData} onTrade={setTradeModalSymbol} stockPrices={stockPrices} />
