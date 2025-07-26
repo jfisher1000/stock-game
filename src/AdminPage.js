@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { db } from './firebase';
+import { db, auth } from './firebase'; // Import auth
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import {
     doc,
     collection,
@@ -14,7 +15,16 @@ import {
 
 // --- Helper Components & Functions ---
 
-const formatDate = (ts) => ts ? new Date(ts.seconds * 1000).toLocaleString() : 'N/A';
+const formatDate = (ts) => {
+    if (!ts) return 'N/A';
+    const date = new Date(ts.seconds * 1000);
+    const options = {
+        year: 'numeric', month: 'numeric', day: 'numeric',
+        hour: 'numeric', minute: '2-digit', second: '2-digit',
+        timeZoneName: 'short',
+    };
+    return new Intl.DateTimeFormat('en-US', options).format(date);
+};
 
 const TrashIcon = ({ className = "w-5 h-5" }) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>;
 
@@ -121,10 +131,6 @@ const CompetitionManagement = ({ competitions, onDelete }) => (
 );
 
 const UserManagement = ({ users, onRoleChange }) => {
-    const handleRoleChange = (userId, newRole) => {
-        onRoleChange(userId, newRole);
-    };
-
     return (
         <div className="overflow-x-auto">
             <table className="w-full text-left">
@@ -144,7 +150,7 @@ const UserManagement = ({ users, onRoleChange }) => {
                             <td className="p-4">
                                 <select 
                                     value={user.role} 
-                                    onChange={(e) => handleRoleChange(user.id, e.target.value)}
+                                    onChange={(e) => onRoleChange(user.id, e.target.value)}
                                     className="bg-black/20 p-2 rounded-md border border-white/20"
                                 >
                                     <option value="player">Player</option>
@@ -276,11 +282,20 @@ const AdminPage = () => {
     };
 
     const handleRoleChange = async (userId, newRole) => {
-        const userRef = doc(db, 'users', userId);
         try {
-            await updateDoc(userRef, { role: newRole });
+            const functions = getFunctions();
+            const setUserRole = httpsCallable(functions, 'setUserRole');
+            const result = await setUserRole({ userId, newRole });
+            console.log(result.data);
+
+            // If the current user's role was changed, force a token refresh
+            if (auth.currentUser && auth.currentUser.uid === userId) {
+                console.log("Forcing token refresh for current user...");
+                await auth.currentUser.getIdToken(true);
+            }
         } catch (error) {
             console.error(`Failed to update role for user ${userId}:`, error);
+            alert(`Error setting role: ${error.message}`);
         }
     };
 
