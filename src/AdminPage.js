@@ -8,8 +8,7 @@ import {
     onSnapshot,
     updateDoc,
     setDoc,
-    deleteDoc,
-    getDocs
+    deleteDoc
 } from 'firebase/firestore';
 
 // --- Helper Components & Functions ---
@@ -167,7 +166,7 @@ const UserManagement = ({ users, onRoleChange }) => {
 
 
 const AdminPage = () => {
-    const [apiStats, setApiStats] = useState({ total: 0, avgPerMinute: 0 });
+    const [apiStats, setApiStats] = useState({ total: 0, avgPerMinute: 0, peakPerMinute: 0 });
     const [loading, setLoading] = useState(true);
     const [inputInterval, setInputInterval] = useState(10);
     const [saveStatus, setSaveStatus] = useState('');
@@ -183,6 +182,7 @@ const AdminPage = () => {
         const unsubscribeLogs = onSnapshot(query(collection(db, 'api_logs'), where('timestamp', '>=', twoDaysAgo)), (snapshot) => {
             const calls = snapshot.docs.map(doc => doc.data().timestamp.toDate());
             
+            // --- Chart Data (Last 48 Hours) ---
             const callsByHour = calls.reduce((acc, callTime) => {
                 const hourKey = new Date(callTime.getFullYear(), callTime.getMonth(), callTime.getDate(), callTime.getHours()).toISOString();
                 acc[hourKey] = (acc[hourKey] || 0) + 1;
@@ -198,13 +198,24 @@ const AdminPage = () => {
                         calls: count,
                     };
                 });
-
             setChartData(formattedData);
 
-            const recentCalls = calls.filter(call => call.getTime() > (Date.now() - 2 * 60 * 60 * 1000));
-            const totalCalls = recentCalls.length;
-            const avg = totalCalls > 0 ? totalCalls / 120 : 0;
-            setApiStats({ total: totalCalls, avgPerMinute: avg.toFixed(2) });
+            // --- Stats (Last Hour) ---
+            const oneHourAgo = Date.now() - 60 * 60 * 1000;
+            const recentCalls = calls.filter(call => call.getTime() > oneHourAgo);
+            
+            const totalRecentCalls = recentCalls.length;
+            const avg = totalRecentCalls > 0 ? totalRecentCalls / 60 : 0;
+
+            // Calculate Peak Calls Per Minute
+            const callsByMinute = recentCalls.reduce((acc, callTime) => {
+                const minuteKey = new Date(callTime.getFullYear(), callTime.getMonth(), callTime.getDate(), callTime.getHours(), callTime.getMinutes()).toISOString();
+                acc[minuteKey] = (acc[minuteKey] || 0) + 1;
+                return acc;
+            }, {});
+            const peak = Math.max(0, ...Object.values(callsByMinute));
+
+            setApiStats({ total: totalRecentCalls, avgPerMinute: avg.toFixed(2), peakPerMinute: peak });
             setLoading(false);
         });
 
@@ -223,7 +234,6 @@ const AdminPage = () => {
             setAllCompetitions(fetchedComps);
         });
         
-        // Listener for all users
         const usersQuery = query(collection(db, 'users'));
         const unsubscribeUsers = onSnapshot(usersQuery, (snapshot) => {
             const fetchedUsers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -240,8 +250,8 @@ const AdminPage = () => {
 
     const handleSaveInterval = async () => {
         setSaveStatus('Saving...');
-        const newInterval = parseInt(inputInterval, 10);
-        if (isNaN(newInterval) || newInterval < 1) {
+        const newInterval = parseFloat(inputInterval);
+        if (isNaN(newInterval) || newInterval <= 0) {
             setSaveStatus('Error: Please enter a number greater than 0.');
             return;
         }
@@ -291,14 +301,14 @@ const AdminPage = () => {
             )}
 
             <h1 className="text-4xl font-bold mb-8">Admin Dashboard</h1>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div className="glass-card p-6 rounded-lg lg:col-span-2">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div className="glass-card p-6 rounded-lg lg:col-span-3">
                     <h2 className="text-2xl font-bold mb-4">API Usage (Last 48 Hours)</h2>
                     {loading ? <p>Loading chart...</p> : <SimpleBarChart data={chartData} />}
                 </div>
 
                 <div className="glass-card p-6 rounded-lg">
-                    <h2 className="text-2xl font-bold mb-4">API Stats (Last 2 Hours)</h2>
+                    <h2 className="text-2xl font-bold mb-4">API Stats (Last Hour)</h2>
                     {loading ? <p>Loading stats...</p> : (
                         <div className="space-y-4">
                             <div>
@@ -309,10 +319,14 @@ const AdminPage = () => {
                                 <p className="text-gray-400">Average Calls / Minute</p>
                                 <p className="text-3xl font-bold">{apiStats.avgPerMinute}</p>
                             </div>
+                             <div>
+                                <p className="text-gray-400">Peak Calls in a Single Minute</p>
+                                <p className="text-3xl font-bold text-yellow-400">{apiStats.peakPerMinute}</p>
+                            </div>
                         </div>
                     )}
                 </div>
-                <div className="glass-card p-6 rounded-lg">
+                <div className="glass-card p-6 rounded-lg lg:col-span-2">
                      <h2 className="text-2xl font-bold mb-4">App Settings</h2>
                      <div className="space-y-2">
                         <label className="block text-gray-300">Market Data Refresh Interval (minutes)</label>
@@ -321,21 +335,23 @@ const AdminPage = () => {
                                 type="number" 
                                 value={inputInterval}
                                 onChange={(e) => setInputInterval(e.target.value)}
+                                step="0.1"
+                                min="0.1"
                                 className="w-full bg-black/20 p-3 rounded-md border border-white/20" 
                             />
                             <button onClick={handleSaveInterval} className="py-3 px-5 rounded-md bg-primary hover:opacity-90">Save</button>
                         </div>
                         {saveStatus && <p className="text-sm mt-2">{saveStatus}</p>}
-                        <p className="text-xs text-gray-400">This controls how often the server fetches new stock prices. Minimum is 1 minute.</p>
+                        <p className="text-xs text-gray-400">Controls how often the server fetches prices. Use decimals for intervals under 1 minute (e.g., 0.5 for 30 seconds). Be cautious with low values.</p>
                      </div>
                 </div>
 
-                <div className="glass-card p-6 rounded-lg lg:col-span-2">
+                <div className="glass-card p-6 rounded-lg lg:col-span-3">
                     <h2 className="text-2xl font-bold mb-4">User Management</h2>
                     <UserManagement users={allUsers} onRoleChange={handleRoleChange} />
                 </div>
 
-                <div className="glass-card p-6 rounded-lg lg:col-span-2">
+                <div className="glass-card p-6 rounded-lg lg:col-span-3">
                     <h2 className="text-2xl font-bold mb-4">Competition Management</h2>
                     <CompetitionManagement competitions={allCompetitions} onDelete={handleDeleteCompetitionClick} />
                 </div>
