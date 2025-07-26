@@ -1,4 +1,4 @@
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, Suspense, useRef, useCallback } from 'react';
 import { auth, db } from './firebase';
 import {
     onAuthStateChanged,
@@ -113,7 +113,7 @@ const AuthPage = () => {
     );
 };
 
-// --- General Purpose Modal ---
+// --- General Purpose Modals ---
 const ConfirmDeleteModal = ({ title, body, onConfirm, onCancel }) => (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
         <div className="glass-card p-8 rounded-lg w-full max-w-md text-white text-center">
@@ -122,6 +122,19 @@ const ConfirmDeleteModal = ({ title, body, onConfirm, onCancel }) => (
             <div className="flex justify-center gap-4">
                 <button onClick={onCancel} className="py-2 px-6 rounded-md hover:bg-white/10">Cancel</button>
                 <button onClick={onConfirm} className="py-2 px-6 rounded-md bg-danger hover:opacity-90">Delete</button>
+            </div>
+        </div>
+    </div>
+);
+
+const InactivityWarningModal = ({ onStay, onLogout, countdown }) => (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+        <div className="glass-card p-8 rounded-lg w-full max-w-md text-white text-center">
+            <h2 className="text-2xl font-bold mb-4">Are you still there?</h2>
+            <p className="mb-6">You've been inactive for a while. For your security, we'll log you out in {countdown} seconds.</p>
+            <div className="flex justify-center gap-4">
+                <button onClick={onLogout} className="py-2 px-6 rounded-md hover:bg-white/10">Logout</button>
+                <button onClick={onStay} className="py-2 px-6 rounded-md bg-primary hover:opacity-90">Stay Logged In</button>
             </div>
         </div>
     </div>
@@ -223,10 +236,11 @@ const PendingInvitations = ({ user }) => {
 
     useEffect(() => {
         if (!user) return;
-        const q = query(collectionGroup(db, 'invitations'), where('__name__', '>', `competitions/ /invitations/${user.uid}`), where('__name__', '<', `competitions/~/invitations/${user.uid}`));
+        // FIX: Correctly query the invitations subcollection for the current user.
+        const q = query(collectionGroup(db, 'invitations'), where('invitedUsername', '==', user.username));
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
-            const fetchedInvites = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const fetchedInvites = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), path: doc.ref.path }));
             setInvitations(fetchedInvites);
             setLoading(false);
         }, err => {
@@ -259,7 +273,8 @@ const PendingInvitations = ({ user }) => {
                 participantIds: [...(comp.participantIds || []), user.uid]
             });
 
-            const inviteRef = doc(db, 'competitions', invite.competitionId, 'invitations', user.uid);
+            // Use the full path to the invitation document to delete it
+            const inviteRef = doc(db, invite.path);
             batch.delete(inviteRef);
 
             await batch.commit();
@@ -271,7 +286,7 @@ const PendingInvitations = ({ user }) => {
 
     const handleDecline = async (invite) => {
         try {
-            const inviteRef = doc(db, 'competitions', invite.competitionId, 'invitations', user.uid);
+            const inviteRef = doc(db, invite.path);
             await deleteDoc(inviteRef);
         } catch (error) {
             console.error("Error declining invite: ", error);
@@ -528,13 +543,13 @@ const HomePage = ({ user, onSelectCompetition, onDeleteCompetition }) => {
     );
 };
 
-const CompetitionCard = ({ user, competition, onClick, onDelete }) => {
+const CompetitionCard = ({ user, competition, onClick, onDelete, onJoin }) => {
     const status = getCompetitionStatus(competition.startDate, competition.endDate);
     const isOwner = user.uid === competition.ownerId;
     const isAdmin = user.role === 'admin';
-
+    
     const handleDelete = (e) => {
-        e.stopPropagation(); // Prevent card click event from firing
+        e.stopPropagation(); 
         onDelete();
     };
 
@@ -560,12 +575,19 @@ const CompetitionCard = ({ user, competition, onClick, onDelete }) => {
                     </div>
                 </div>
             </div>
-            {(isAdmin || isOwner) && (
+            {(isAdmin || isOwner) && onDelete && (
                 <div className="border-t border-white/10 mt-4 pt-4 flex justify-end">
                     <button onClick={handleDelete} className="text-danger hover:text-red-400 flex items-center gap-1 text-sm">
                         <TrashIcon className="w-4 h-4" /> Delete
                     </button>
                 </div>
+            )}
+            {onJoin && (
+                 <button 
+                    onClick={onJoin}
+                    className="mt-4 w-full bg-primary hover:opacity-90 text-white font-bold py-2 rounded-md transition duration-300">
+                    Join Competition
+                </button>
             )}
         </div>
     );
@@ -624,22 +646,12 @@ const ExplorePage = ({ user, onJoinCompetition }) => {
             <h1 className="text-4xl font-bold mb-6">Explore Public Competitions</h1>
              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {competitions.map(comp => (
-                    <div key={comp.id} className="glass-card p-6 rounded-lg flex flex-col">
-                        <div className="flex-grow">
-                            <h3 className="text-xl font-bold mb-2">{comp.name}</h3>
-                            <p className="text-gray-400">Owner: {comp.ownerName}</p>
-                            <p className="text-gray-400">Starts with {formatCurrency(comp.startingCash)}</p>
-                             <div className="mt-4 space-y-2">
-                                <div className="flex items-center text-gray-300 text-sm"><CalendarIcon /><span className="ml-2">{formatDate(comp.startDate)} - {formatDate(comp.endDate)}</span></div>
-                                <div className="flex items-center text-gray-300 text-sm"><UsersIcon /><span className="ml-2">{(comp.participantIds || []).length} players</span></div>
-                            </div>
-                        </div>
-                        <button 
-                            onClick={() => handleJoin(comp)}
-                            className="mt-4 w-full bg-primary hover:opacity-90 text-white font-bold py-2 rounded-md transition duration-300">
-                            Join Competition
-                        </button>
-                    </div>
+                    <CompetitionCard 
+                        key={comp.id}
+                        user={user}
+                        competition={comp}
+                        onJoin={() => handleJoin(comp)}
+                    />
                 ))}
                  {competitions.length === 0 && <p>There are no public competitions to join right now. Why not create one?</p>}
             </div>
@@ -1105,7 +1117,7 @@ const SideBar = ({ user, activeTab, onNavigate }) => {
 
     useEffect(() => {
         if (!user) return;
-        const q = query(collectionGroup(db, 'invitations'), where('__name__', '>', `competitions/ /invitations/${user.uid}`), where('__name__', '<', `competitions/~/invitations/${user.uid}`));
+        const q = query(collectionGroup(db, 'invitations'), where('invitedUsername', '==', user.username));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             setHasInvites(!snapshot.empty);
         });
@@ -1145,6 +1157,58 @@ function App() {
     const [isCreateModalOpen, setCreateModalOpen] = useState(false);
     const [selectedCompetitionId, setSelectedCompetitionId] = useState(null);
     const [competitionToDelete, setCompetitionToDelete] = useState(null);
+    const [showInactivityModal, setShowInactivityModal] = useState(false);
+    const [countdown, setCountdown] = useState(60);
+
+    const inactivityTimer = useRef(null);
+    const warningTimer = useRef(null);
+    const countdownTimer = useRef(null);
+
+    const handleLogout = useCallback(() => {
+        signOut(auth);
+    }, []);
+
+    const resetInactivityTimer = useCallback(() => {
+        clearTimeout(inactivityTimer.current);
+        clearTimeout(warningTimer.current);
+        clearInterval(countdownTimer.current);
+        setShowInactivityModal(false);
+
+        // Show warning after 29 minutes
+        warningTimer.current = setTimeout(() => {
+            setCountdown(60);
+            setShowInactivityModal(true);
+            countdownTimer.current = setInterval(() => {
+                setCountdown(prev => prev - 1);
+            }, 1000);
+        }, 29 * 60 * 1000); // 29 minutes
+
+        // Logout after 30 minutes
+        inactivityTimer.current = setTimeout(handleLogout, 30 * 60 * 1000); // 30 minutes
+    }, [handleLogout]);
+
+    useEffect(() => {
+        const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
+        
+        if (user) {
+            events.forEach(event => window.addEventListener(event, resetInactivityTimer));
+            resetInactivityTimer();
+        }
+
+        return () => {
+            events.forEach(event => window.removeEventListener(event, resetInactivityTimer));
+            clearTimeout(inactivityTimer.current);
+            clearTimeout(warningTimer.current);
+            clearInterval(countdownTimer.current);
+        };
+    }, [user, resetInactivityTimer]);
+
+    useEffect(() => {
+        if (countdown <= 0) {
+            clearInterval(countdownTimer.current);
+            handleLogout();
+        }
+    }, [countdown, handleLogout]);
 
 
     useEffect(() => {
@@ -1236,6 +1300,13 @@ function App() {
         <div className="flex bg-gray-900 min-h-screen">
             {user ? (
                 <>
+                    {showInactivityModal && (
+                        <InactivityWarningModal 
+                            onStay={resetInactivityTimer}
+                            onLogout={handleLogout}
+                            countdown={countdown}
+                        />
+                    )}
                     {isCreateModalOpen && <CreateCompetitionModal user={user} onClose={() => setCreateModalOpen(false)} />}
                     {competitionToDelete && (
                         <ConfirmDeleteModal 
