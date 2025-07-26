@@ -22,7 +22,7 @@ const logApiCall = async () => {
  * Returns a static, hardcoded list of the top cryptocurrencies.
  */
 const getTopCryptos = () => {
-    return [z
+    return [
         { symbol: 'BTC', name: 'Bitcoin' },
         { symbol: 'ETH', name: 'Ethereum' },
         { symbol: 'USDT', name: 'Tether' },
