@@ -237,7 +237,10 @@ const PendingInvitations = ({ user }) => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        if (!user) return;
+        // **FIX**: Check for user.username to prevent running the query before user data is fully loaded.
+        if (!user?.username) return; 
+        
+        // **FIX**: Depend on the stable user.username instead of the whole user object.
         const q = query(collectionGroup(db, 'invitations'), where('invitedUsername', '==', user.username));
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -250,7 +253,7 @@ const PendingInvitations = ({ user }) => {
         });
 
         return () => unsubscribe();
-    }, [user]);
+    }, [user?.username]);
 
     const handleAccept = async (invite) => {
         try {
@@ -1176,13 +1179,13 @@ const SideBar = ({ user, activeTab, onNavigate }) => {
     const [hasInvites, setHasInvites] = useState(false);
 
     useEffect(() => {
-        if (!user) return;
+        if (!user?.username) return;
         const q = query(collectionGroup(db, 'invitations'), where('invitedUsername', '==', user.username));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             setHasInvites(!snapshot.empty);
         });
         return () => unsubscribe();
-    }, [user]);
+    }, [user?.username]);
 
     const NavItem = ({ icon, label, name, hasNotification }) => (
         <li onClick={() => onNavigate(name)} className={`relative flex items-center p-3 my-1 rounded-lg cursor-pointer transition-colors ${activeTab === name ? 'bg-primary text-white' : 'text-gray-300 hover:bg-white/10'}`}>
