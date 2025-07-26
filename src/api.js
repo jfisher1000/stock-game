@@ -56,12 +56,18 @@ export const searchSymbols = async (keywords) => {
 
         // Process crypto results
         let cryptoResults = [];
-        if (digitalCurrencyData && typeof digitalCurrencyData === 'string') {
-            // The currency list APIs return CSV data as a string, so we need to parse it.
-            const physicalCurrencySet = new Set(
+        
+        // **FIX**: Added robust checks to ensure both API responses are valid CSV strings before parsing.
+        let physicalCurrencySet = new Set();
+        if (physicalCurrencyData && typeof physicalCurrencyData === 'string') {
+            physicalCurrencySet = new Set(
                 physicalCurrencyData.split('\r\n').slice(1).map(row => row.split(',')[0])
             );
+        } else if (physicalCurrencyData && physicalCurrencyData.Note) {
+            console.warn('Alpha Vantage API Note (Physical Currencies):', physicalCurrencyData.Note);
+        }
 
+        if (digitalCurrencyData && typeof digitalCurrencyData === 'string') {
             const digitalCurrencies = digitalCurrencyData.split('\r\n').slice(1).map(row => {
                 const [symbol, name] = row.split(',');
                 return { symbol, name };
@@ -70,6 +76,7 @@ export const searchSymbols = async (keywords) => {
             const upperKeywords = keywords.toUpperCase();
             cryptoResults = digitalCurrencies
                 .filter(({ symbol, name }) => 
+                    symbol && name && // Ensure row is valid
                     !physicalCurrencySet.has(symbol) && // Exclude physical currencies like 'USD'
                     (symbol.toUpperCase().includes(upperKeywords) || name.toUpperCase().includes(upperKeywords))
                 )
@@ -80,7 +87,7 @@ export const searchSymbols = async (keywords) => {
                     '4. region': 'N/A', // Add dummy fields to match stock structure
                     '8. currency': 'USD'
                 }));
-        } else if (digitalCurrencyData.Note) {
+        } else if (digitalCurrencyData && digitalCurrencyData.Note) {
              console.warn('Alpha Vantage API Note (Crypto):', digitalCurrencyData.Note);
         }
 
@@ -117,6 +124,7 @@ export const getQuote = async (symbol) => {
             if (exchangeRate) {
                  return {
                     '01. symbol': exchangeRate['1. From_Currency Code'],
+                    '2. name': exchangeRate['2. From_Currency Name'],
                     '02. open': 'N/A',
                     '03. high': 'N/A',
                     '04. low': 'N/A',
