@@ -10,7 +10,7 @@ import {
     setDoc
 } from 'firebase/firestore';
 
-// --- NEW: Dependency-Free Bar Chart Component ---
+// --- Dependency-Free Bar Chart Component (with label fix) ---
 const SimpleBarChart = ({ data }) => {
     if (!data || data.length === 0) {
         return <p className="text-center text-gray-400">No API usage data to display.</p>;
@@ -21,6 +21,11 @@ const SimpleBarChart = ({ data }) => {
     const barWidth = 30;
     const barMargin = 15;
     const chartWidth = data.length * (barWidth + barMargin);
+    
+    // Determine the interval to show labels to avoid overlap.
+    // Show a label roughly every 120px.
+    const labelInterval = Math.max(1, Math.floor(120 / (barWidth + barMargin)));
+
 
     return (
         <div className="overflow-x-auto p-4">
@@ -37,6 +42,10 @@ const SimpleBarChart = ({ data }) => {
                     const barHeight = maxValue > 0 ? (d.calls / maxValue) * chartHeight : 0;
                     const x = i * (barWidth + barMargin) + 40; // Offset for Y-axis labels
                     const y = chartHeight - barHeight;
+                    
+                    // FIX: Only render a label if it's at the calculated interval to prevent overlap
+                    const showLabel = i % labelInterval === 0;
+
                     return (
                         <g key={d.timeLabel}>
                             <rect
@@ -46,14 +55,16 @@ const SimpleBarChart = ({ data }) => {
                                 height={barHeight}
                                 className="fill-current text-indigo-500 hover:text-indigo-400 transition-colors"
                             />
-                            <text
-                                x={x + barWidth / 2}
-                                y={chartHeight + 20}
-                                textAnchor="middle"
-                                className="text-xs text-gray-300 fill-current"
-                            >
-                                {d.timeLabel}
-                            </text>
+                            {showLabel && (
+                                <text
+                                    x={x + barWidth / 2}
+                                    y={chartHeight + 20}
+                                    textAnchor="middle"
+                                    className="text-xs text-gray-300 fill-current"
+                                >
+                                    {d.timeLabel}
+                                </text>
+                            )}
                         </g>
                     );
                 })}
@@ -117,6 +128,7 @@ const AdminPage = () => {
                 setRefreshInterval(interval);
                 setInputInterval(interval);
             } else {
+                // If the settings doc doesn't exist, create it with a default value
                 setDoc(settingsRef, { refreshIntervalMinutes: 10, lastRunTimestamp: null });
             }
         });
