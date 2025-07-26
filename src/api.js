@@ -2,11 +2,12 @@
 import { db } from './firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
-const apiKey = process.env.REACT_APP_ALPHA_VANTAGE_API_KEY;
-const API_URL = 'https://www.alphavantage.co/query';
+const alphaVantageApiKey = process.env.REACT_APP_ALPHA_VANTAGE_API_KEY;
+const ALPHA_VANTAGE_API_URL = 'https://www.alphavantage.co/query';
 
 /**
  * Logs a record of an API call to Firestore.
+ * This should primarily be used for Alpha Vantage calls to monitor usage.
  */
 const logApiCall = async () => {
     try {
@@ -18,91 +19,63 @@ const logApiCall = async () => {
     }
 };
 
-// --- Caching Mechanism for the digital currency list ---
-const cache = {
-    digitalList: null,
-    lastFetch: 0,
-};
-const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
-
 /**
- * Fetches the complete list of digital currencies from the API
- * and caches it for 24 hours to avoid exceeding API limits.
+ * Returns a static, hardcoded list of the top cryptocurrencies.
+ * This requires no API key and makes no network calls, making it free and reliable.
  */
-const getDigitalCurrencyList = async () => {
-    const now = Date.now();
-    if (now - cache.lastFetch < CACHE_DURATION && cache.digitalList) {
-        console.log("Using cached digital currency list.");
-        return cache.digitalList;
-    }
-
-    console.log("Fetching and caching new digital currency list...");
-    logApiCall();
-
-    try {
-        const response = await fetch(`${API_URL}?function=DIGITAL_CURRENCY_LIST&apikey=${apiKey}`);
-        // The API returns this data as a CSV string, not JSON.
-        const csvData = await response.text();
-        
-        // --- NEW DEBUGGING STEP ---
-        console.log("Raw response from DIGITAL_CURRENCY_LIST:", csvData);
-        // --- END NEW DEBUGGING STEP ---
-        
-        // Handle API errors or rate limiting messages which are returned as text/html
-        if (!csvData || typeof csvData !== 'string' || !csvData.startsWith('currency code,currency name')) {
-             console.error('Could not fetch or parse digital currency list. The response was not a valid CSV.');
-             cache.digitalList = []; // Cache empty array on failure
-             return [];
-        }
-
-        // Parse the CSV data manually. The header is "currency code,currency name"
-        const lines = csvData.trim().split('\n');
-        const list = lines.slice(1).map(line => { // skip header
-            const values = line.split(',');
-            if (values.length >= 2) {
-                return {
-                    symbol: values[0].trim(),
-                    name: values.slice(1).join(',').trim() // Join back in case name has commas
-                };
-            }
-            return null;
-        }).filter(c => c && c.symbol && c.name); // Filter out any empty/invalid rows
-
-        cache.digitalList = list;
-        cache.lastFetch = now;
-        return list;
-
-    } catch (error) {
-        console.error("Error fetching digital currency list:", error);
-        cache.digitalList = []; // Ensure cache is empty on error
-        return [];
-    }
+const getTopCryptos = () => {
+    console.log("Using hardcoded crypto list.");
+    return [
+        { symbol: 'BTC', name: 'Bitcoin' },
+        { symbol: 'ETH', name: 'Ethereum' },
+        { symbol: 'USDT', name: 'Tether' },
+        { symbol: 'BNB', name: 'BNB' },
+        { symbol: 'SOL', name: 'Solana' },
+        { symbol: 'XRP', name: 'XRP' },
+        { symbol: 'USDC', name: 'USD Coin' },
+        { symbol: 'ADA', name: 'Cardano' },
+        { symbol: 'AVAX', name: 'Avalanche' },
+        { symbol: 'DOGE', name: 'Dogecoin' },
+        { symbol: 'DOT', name: 'Polkadot' },
+        { symbol: 'TRX', name: 'TRON' },
+        { symbol: 'LINK', name: 'Chainlink' },
+        { symbol: 'MATIC', name: 'Polygon' },
+        { symbol: 'ICP', name: 'Internet Computer' },
+        { symbol: 'BCH', name: 'Bitcoin Cash' },
+        { symbol: 'LTC', name: 'Litecoin' },
+        { symbol: 'NEAR', name: 'NEAR Protocol' },
+        { symbol: 'UNI', name: 'Uniswap' },
+        { symbol: 'LEO', name: 'LEO Token' },
+        { symbol: 'SHIB', name: 'Shiba Inu' },
+        { symbol: 'DAI', name: 'Dai' },
+        { symbol: 'ATOM', name: 'Cosmos' },
+        { symbol: 'ETC', name: 'Ethereum Classic' },
+        { symbol: 'XLM', name: 'Stellar' },
+    ];
 };
 
 
 /**
- * Searches for stock symbols (live) and cryptocurrencies (from a cached list) based on keywords.
+ * Searches for stocks (live from Alpha Vantage) and cryptocurrencies (from a hardcoded list).
  */
 export const searchSymbols = async (keywords) => {
     if (!keywords) return [];
-    if (!apiKey) {
+    if (!alphaVantageApiKey) {
         console.error("Alpha Vantage API Key is missing.");
         return [];
     }
 
-    // 1. Start both searches in parallel.
-    const stockSearchPromise = fetch(`${API_URL}?function=SYMBOL_SEARCH&keywords=${keywords}&apikey=${apiKey}`).then(res => res.json());
-    const cryptoListPromise = getDigitalCurrencyList();
-    logApiCall(); // Log the stock search call
+    // 1. Get the crypto list (instantly, from our hardcoded list) and start the stock search.
+    const stockSearchPromise = fetch(`${ALPHA_VANTAGE_API_URL}?function=SYMBOL_SEARCH&keywords=${keywords}&apikey=${alphaVantageApiKey}`).then(res => res.json());
+    const cryptoList = getTopCryptos();
+    logApiCall(); // Log the Alpha Vantage stock search call
 
     try {
-        const [stockData, digitalList] = await Promise.all([stockSearchPromise, cryptoListPromise]);
-
         // 2. Filter the crypto list based on keywords
         const upperKeywords = keywords.toUpperCase();
-        const cryptoResults = digitalList
+        const cryptoResults = cryptoList
             .filter(({ symbol, name }) =>
-                (symbol.toUpperCase().includes(upperKeywords) || name.toUpperCase().includes(upperKeywords))
+                (symbol.includes(upperKeywords) || name.toUpperCase().includes(upperKeywords))
             )
             .map(({ symbol, name }) => ({
                 '1. symbol': symbol,
@@ -113,9 +86,9 @@ export const searchSymbols = async (keywords) => {
             }));
 
         // 3. Process stock results from the live API call
+        const stockData = await stockSearchPromise;
         let stockResults = [];
         if (stockData.bestMatches) {
-            // Filter out any crypto results that the stock search might accidentally return to avoid duplicates.
             stockResults = stockData.bestMatches.filter(match => match['3. type'] !== 'Cryptocurrency');
         } else if (stockData.Note) {
             console.warn('Alpha Vantage API Note (Stocks):', stockData.Note);
@@ -125,52 +98,58 @@ export const searchSymbols = async (keywords) => {
         return [...cryptoResults, ...stockResults];
 
     } catch (error) {
-        console.error("Error searching symbols:", error);
+        console.error("Error during symbol search:", error);
         return [];
     }
 };
 
 /**
- * Fetches the latest price for a given stock or crypto symbol.
+ * Fetches the latest price for a given stock or crypto symbol using Alpha Vantage.
  */
 export const getQuote = async (symbol) => {
     if (!symbol) return null;
-    if (!apiKey) {
+    if (!alphaVantageApiKey) {
         console.error("Alpha Vantage API Key is missing.");
         return null;
     }
     try {
-        logApiCall(); // Log the API call
-        const response = await fetch(`${API_URL}?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${apiKey}`);
+        // Alpha Vantage is good for getting quotes for both stocks and major cryptos.
+        logApiCall();
+        const response = await fetch(`${ALPHA_VANTAGE_API_URL}?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${alphaVantageApiKey}`);
         const data = await response.json();
+        
         if (data['Global Quote'] && Object.keys(data['Global Quote']).length > 0) {
             return data['Global Quote'];
-        } else {
-            // Fallback for crypto, since GLOBAL_QUOTE may not work for them
-            logApiCall();
-            const cryptoResponse = await fetch(`${API_URL}?function=CURRENCY_EXCHANGE_RATE&from_currency=${symbol}&to_currency=USD&apikey=${apiKey}`);
-            const cryptoData = await cryptoResponse.json();
-            const exchangeRate = cryptoData['Realtime Currency Exchange Rate'];
-            if (exchangeRate) {
-                 return {
-                    '01. symbol': exchangeRate['1. From_Currency Code'],
-                    '02. name': exchangeRate['2. From_Currency Name'],
-                    '02. open': 'N/A',
-                    '03. high': 'N/A',
-                    '04. low': 'N/A',
-                    '05. price': exchangeRate['5. Exchange Rate'],
-                    '06. volume': 'N/A',
-                    '07. latest trading day': 'N/A',
-                    '08. previous close': 'N/A',
-                    '09. change': '0', // Crypto API doesn't provide change
-                    '10. change percent': '0.00%'
-                };
-            }
-            console.warn("No quote found for symbol:", symbol, data, cryptoData);
-            return null;
+        } 
+        
+        // If GLOBAL_QUOTE fails, it might be a crypto. Try the currency exchange endpoint as a fallback.
+        logApiCall();
+        const cryptoResponse = await fetch(`${ALPHA_VANTAGE_API_URL}?function=CURRENCY_EXCHANGE_RATE&from_currency=${symbol}&to_currency=USD&apikey=${alphaVantageApiKey}`);
+        const cryptoData = await cryptoResponse.json();
+        const exchangeRate = cryptoData['Realtime Currency Exchange Rate'];
+
+        if (exchangeRate) {
+             // Format the crypto data to look like a regular quote for consistency.
+             return {
+                '01. symbol': exchangeRate['1. From_Currency Code'],
+                '02. name': exchangeRate['2. From_Currency Name'],
+                '02. open': 'N/A',
+                '03. high': 'N/A',
+                '04. low': 'N/A',
+                '05. price': exchangeRate['5. Exchange Rate'],
+                '06. volume': 'N/A',
+                '07. latest trading day': 'N/A',
+                '08. previous close': 'N/A',
+                '09. change': '0', // This endpoint doesn't provide change info
+                '10. change percent': '0.00%'
+            };
         }
+        
+        console.warn("No quote found for symbol:", symbol, data, cryptoData);
+        return null;
+        
     } catch (error) {
-        console.error("Error fetching quote:", error);
+        console.error("Error fetching quote for symbol:", symbol, error);
         return null;
     }
 };
