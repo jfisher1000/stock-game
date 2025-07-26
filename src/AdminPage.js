@@ -8,7 +8,8 @@ import {
     onSnapshot,
     updateDoc,
     setDoc,
-    deleteDoc
+    deleteDoc,
+    getDocs
 } from 'firebase/firestore';
 
 // --- Helper Components & Functions ---
@@ -74,11 +75,11 @@ const SimpleBarChart = ({ data }) => {
     );
 };
 
-const ConfirmDeleteModal = ({ competitionName, onConfirm, onCancel }) => (
+const ConfirmDeleteModal = ({ title, body, onConfirm, onCancel }) => (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
         <div className="glass-card p-8 rounded-lg w-full max-w-md text-white text-center">
-            <h2 className="text-2xl font-bold mb-4">Confirm Deletion</h2>
-            <p className="mb-6">Are you sure you want to permanently delete the competition "{competitionName}"? This action cannot be undone.</p>
+            <h2 className="text-2xl font-bold mb-4">{title}</h2>
+            <p className="mb-6">{body}</p>
             <div className="flex justify-center gap-4">
                 <button onClick={onCancel} className="py-2 px-6 rounded-md hover:bg-white/10">Cancel</button>
                 <button onClick={onConfirm} className="py-2 px-6 rounded-md bg-danger hover:opacity-90">Delete</button>
@@ -105,7 +106,7 @@ const CompetitionManagement = ({ competitions, onDelete }) => (
                         <td className="p-4 font-bold">{comp.name}</td>
                         <td className="p-4 text-gray-300">{comp.ownerName}</td>
                         <td className="p-4 text-gray-300">{formatDate(comp.endDate)}</td>
-                        <td className="p-4 text-gray-300">{comp.participantIds.length}</td>
+                        <td className="p-4 text-gray-300">{(comp.participantIds || []).length}</td>
                         <td className="p-4">
                             <button onClick={() => onDelete(comp)} className="text-danger hover:text-red-400">
                                 <TrashIcon />
@@ -119,15 +120,60 @@ const CompetitionManagement = ({ competitions, onDelete }) => (
     </div>
 );
 
+const UserManagement = ({ users, onRoleChange }) => {
+    const handleRoleChange = (userId, newRole) => {
+        onRoleChange(userId, newRole);
+    };
+
+    return (
+        <div className="overflow-x-auto">
+            <table className="w-full text-left">
+                <thead className="bg-white/10">
+                    <tr>
+                        <th className="p-4">Username</th>
+                        <th className="p-4">Email</th>
+                        <th className="p-4">Role</th>
+                        <th className="p-4">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {users.map((user) => (
+                        <tr key={user.id} className="border-b border-white/10 last:border-b-0">
+                            <td className="p-4 font-bold">{user.username}</td>
+                            <td className="p-4 text-gray-300">{user.email}</td>
+                            <td className="p-4">
+                                <select 
+                                    value={user.role} 
+                                    onChange={(e) => handleRoleChange(user.id, e.target.value)}
+                                    className="bg-black/20 p-2 rounded-md border border-white/20"
+                                >
+                                    <option value="player">Player</option>
+                                    <option value="admin">Admin</option>
+                                </select>
+                            </td>
+                            <td className="p-4">
+                                <button disabled className="text-danger/50 cursor-not-allowed" title="User deletion must be handled by a Cloud Function for safety.">
+                                    <TrashIcon />
+                                </button>
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+            {users.length === 0 && <p className="text-center text-gray-400 p-8">No users found.</p>}
+        </div>
+    );
+};
+
 
 const AdminPage = () => {
     const [apiStats, setApiStats] = useState({ total: 0, avgPerMinute: 0 });
     const [loading, setLoading] = useState(true);
-    const [refreshInterval, setRefreshInterval] = useState(10);
     const [inputInterval, setInputInterval] = useState(10);
     const [saveStatus, setSaveStatus] = useState('');
     const [chartData, setChartData] = useState([]);
     const [allCompetitions, setAllCompetitions] = useState([]);
+    const [allUsers, setAllUsers] = useState([]);
     const [competitionToDelete, setCompetitionToDelete] = useState(null);
 
     const settingsRef = doc(db, 'app_settings', 'market_data');
@@ -160,34 +206,35 @@ const AdminPage = () => {
             const avg = totalCalls > 0 ? totalCalls / 120 : 0;
             setApiStats({ total: totalCalls, avgPerMinute: avg.toFixed(2) });
             setLoading(false);
-        }, (error) => {
-            console.error("Error fetching API logs:", error);
-            setLoading(false);
         });
 
         const unsubscribeSettings = onSnapshot(settingsRef, (doc) => {
             if (doc.exists()) {
                 const interval = doc.data().refreshIntervalMinutes;
-                setRefreshInterval(interval);
                 setInputInterval(interval);
             } else {
                 setDoc(settingsRef, { refreshIntervalMinutes: 10, lastRunTimestamp: null });
             }
         });
 
-        // New listener for all competitions
         const compsQuery = query(collection(db, 'competitions'));
         const unsubscribeCompetitions = onSnapshot(compsQuery, (snapshot) => {
             const fetchedComps = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             setAllCompetitions(fetchedComps);
-        }, (error) => {
-            console.error("Error fetching competitions:", error);
+        });
+        
+        // Listener for all users
+        const usersQuery = query(collection(db, 'users'));
+        const unsubscribeUsers = onSnapshot(usersQuery, (snapshot) => {
+            const fetchedUsers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setAllUsers(fetchedUsers);
         });
 
         return () => {
             unsubscribeLogs();
             unsubscribeSettings();
             unsubscribeCompetitions();
+            unsubscribeUsers();
         };
     }, []);
 
@@ -208,16 +255,13 @@ const AdminPage = () => {
         setTimeout(() => setSaveStatus(''), 3000);
     };
 
-    const handleDeleteClick = (competition) => {
+    const handleDeleteCompetitionClick = (competition) => {
         setCompetitionToDelete(competition);
     };
 
-    const handleConfirmDelete = async () => {
+    const handleConfirmDeleteCompetition = async () => {
         if (!competitionToDelete) return;
         try {
-            // Note: This deletes the competition document, but not its subcollections 
-            // (participants, invitations) due to Firestore limitations on client-side deletes.
-            // A Cloud Function would be needed for a full recursive delete.
             await deleteDoc(doc(db, 'competitions', competitionToDelete.id));
         } catch (error) {
             console.error("Error deleting competition:", error);
@@ -226,12 +270,22 @@ const AdminPage = () => {
         }
     };
 
+    const handleRoleChange = async (userId, newRole) => {
+        const userRef = doc(db, 'users', userId);
+        try {
+            await updateDoc(userRef, { role: newRole });
+        } catch (error) {
+            console.error(`Failed to update role for user ${userId}:`, error);
+        }
+    };
+
     return (
         <div className="p-8 text-white">
             {competitionToDelete && (
                 <ConfirmDeleteModal 
-                    competitionName={competitionToDelete.name}
-                    onConfirm={handleConfirmDelete}
+                    title="Confirm Competition Deletion"
+                    body={`Are you sure you want to permanently delete the competition "${competitionToDelete.name}"? This action cannot be undone.`}
+                    onConfirm={handleConfirmDeleteCompetition}
                     onCancel={() => setCompetitionToDelete(null)}
                 />
             )}
@@ -277,8 +331,13 @@ const AdminPage = () => {
                 </div>
 
                 <div className="glass-card p-6 rounded-lg lg:col-span-2">
+                    <h2 className="text-2xl font-bold mb-4">User Management</h2>
+                    <UserManagement users={allUsers} onRoleChange={handleRoleChange} />
+                </div>
+
+                <div className="glass-card p-6 rounded-lg lg:col-span-2">
                     <h2 className="text-2xl font-bold mb-4">Competition Management</h2>
-                    <CompetitionManagement competitions={allCompetitions} onDelete={handleDeleteClick} />
+                    <CompetitionManagement competitions={allCompetitions} onDelete={handleDeleteCompetitionClick} />
                 </div>
             </div>
         </div>
