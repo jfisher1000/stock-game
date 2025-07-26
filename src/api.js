@@ -97,7 +97,7 @@ export const searchSymbols = async (keywords) => {
 };
 
 /**
- * Fetches the latest price for a given stock or crypto symbol using the reliable GLOBAL_QUOTE endpoint.
+ * Fetches the latest price for a given stock or crypto symbol using the correct endpoint for each.
  */
 export const getQuote = async (symbol) => {
     if (!symbol) return null;
@@ -106,21 +106,17 @@ export const getQuote = async (symbol) => {
         return null;
     }
 
+    const cryptoList = getTopCryptos();
+    const isCrypto = cryptoList.some(c => c.symbol === symbol);
+
     logApiCall();
 
-    try {
-        const response = await fetch(`${ALPHA_VANTAGE_API_URL}?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${alphaVantageApiKey}`);
-        const data = await response.json();
-        
-        if (data['Global Quote'] && Object.keys(data['Global Quote']).length > 0) {
-            return data['Global Quote'];
-        } else {
-            // If GLOBAL_QUOTE fails, it might be a crypto not supported by that endpoint.
-            // We will try the currency exchange endpoint as a fallback.
-            console.warn(`GLOBAL_QUOTE failed for ${symbol}. Trying fallback...`, data);
-            const cryptoResponse = await fetch(`${ALPHA_VANTAGE_API_URL}?function=CURRENCY_EXCHANGE_RATE&from_currency=${symbol}&to_currency=USD&apikey=${alphaVantageApiKey}`);
-            const cryptoData = await cryptoResponse.json();
-            const exchangeRate = cryptoData['Realtime Currency Exchange Rate'];
+    if (isCrypto) {
+        // --- CRYPTOCURRENCY PRICE LOGIC ---
+        try {
+            const response = await fetch(`${ALPHA_VANTAGE_API_URL}?function=CURRENCY_EXCHANGE_RATE&from_currency=${symbol}&to_currency=USD&apikey=${alphaVantageApiKey}`);
+            const data = await response.json();
+            const exchangeRate = data['Realtime Currency Exchange Rate'];
 
             if (exchangeRate && exchangeRate['5. Exchange Rate']) {
                 return {
@@ -130,12 +126,29 @@ export const getQuote = async (symbol) => {
                     '09. change': '0',
                     '10. change percent': '0.00%'
                 };
+            } else {
+                console.error("Crypto quote fetch failed for:", symbol, data);
+                return null;
             }
-            console.error("All quote fetches failed for symbol:", symbol, data, cryptoData);
+        } catch (error) {
+            console.error(`Error fetching crypto quote for ${symbol}:`, error);
             return null;
         }
-    } catch (error) {
-        console.error(`Error fetching quote for ${symbol}:`, error);
-        return null;
+    } else {
+        // --- STOCK PRICE LOGIC ---
+        try {
+            const response = await fetch(`${ALPHA_VANTAGE_API_URL}?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${alphaVantageApiKey}`);
+            const data = await response.json();
+            
+            if (data['Global Quote'] && Object.keys(data['Global Quote']).length > 0 && data['Global Quote']['05. price']) {
+                return data['Global Quote'];
+            } else {
+                console.error("Stock quote fetch failed for:", symbol, data);
+                return null;
+            }
+        } catch (error) {
+            console.error(`Error fetching stock quote for ${symbol}:`, error);
+            return null;
+        }
     }
 };
