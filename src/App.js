@@ -26,8 +26,9 @@ import {
 } from 'firebase/firestore';
 import { searchSymbols, getQuote } from './api';
 
-// Lazy load the AdminPage component. This means its code will only be downloaded when it's needed.
+// Lazy load AdminPage and the new DetailedPortfolioView
 const AdminPage = React.lazy(() => import('./AdminPage'));
+const DetailedPortfolioView = React.lazy(() => import('./DetailedPortfolioView'));
 
 
 // --- Helper & Icon Components ---
@@ -688,20 +689,26 @@ const ExplorePage = ({ user, onJoinCompetition }) => {
 
 // --- Trading & Portfolio Components ---
 
-const PortfolioView = ({ participantData, onTrade, stockPrices }) => {
+const PortfolioView = ({ participantData, onTrade, stockPrices, onViewDetails }) => { // NEW: onViewDetails prop
     if (!participantData) return <div className="glass-card p-6 rounded-lg mt-6"><p>Loading portfolio...</p></div>;
 
     const { cash, portfolioValue } = participantData;
     const holdings = participantData.holdings || {};
 
     const totalStockValue = Object.values(holdings).reduce((acc, data) => {
-        const currentValue = stockPrices[data.originalSymbol] || data.avgCost;
+        const currentValue = stockPrices[data.originalSymbol]?.price || data.avgCost;
         return acc + (currentValue * data.shares);
     }, 0);
 
     return (
         <div className="glass-card p-6 rounded-lg mt-6">
-            <h3 className="text-xl font-semibold mb-2">My Portfolio</h3>
+            <div className="flex justify-between items-center">
+                <h3 className="text-xl font-semibold mb-2">My Portfolio</h3>
+                {/* NEW: View Details Button */}
+                <button onClick={onViewDetails} className="text-sm text-primary hover:underline">
+                    View Details &rarr;
+                </button>
+            </div>
             <div className="mb-4">
                 <span className="text-3xl font-bold">{formatCurrency(portfolioValue)}</span>
                 <p className="text-gray-400 text-sm">Cash: {formatCurrency(cash)}</p>
@@ -718,7 +725,7 @@ const PortfolioView = ({ participantData, onTrade, stockPrices }) => {
                 <tbody>
                     {Object.keys(holdings).length > 0 ? (
                         Object.entries(holdings).map(([sanitizedSymbol, data]) => {
-                            const currentValue = stockPrices[data.originalSymbol] || data.avgCost;
+                            const currentValue = stockPrices[data.originalSymbol]?.price || data.avgCost;
                             const totalValue = currentValue * data.shares;
                             return (
                                 <tr key={sanitizedSymbol} className="border-b border-white/20 last:border-0">
@@ -726,7 +733,7 @@ const PortfolioView = ({ participantData, onTrade, stockPrices }) => {
                                     <td className="p-2">{data.shares}</td>
                                     <td className="p-2">{formatCurrency(totalValue)}</td>
                                     <td className="p-2">
-                                        <button onClick={() => onTrade(data.originalSymbol || sanitizedSymbol)} className="bg-primary/50 text-xs py-1 px-2 rounded hover:bg-primary">Trade</button>
+                                        <button onClick={() => onTrade({ '1. symbol': data.originalSymbol, '3. type': data.assetType })} className="bg-primary/50 text-xs py-1 px-2 rounded hover:bg-primary">Trade</button>
                                     </td>
                                 </tr>
                             )
@@ -806,7 +813,7 @@ const StockSearchView = ({ onSelectStock, isTradingActive }) => {
                         <li
                             key={result['1. symbol']}
                             onClick={() => {
-                                onSelectStock(result['1. symbol']);
+                                onSelectStock(result); // UPDATED: Pass the whole result object
                                 setSearchTerm('');
                                 setResults([]);
                             }}
@@ -816,6 +823,7 @@ const StockSearchView = ({ onSelectStock, isTradingActive }) => {
                                 <span className="font-bold">{result['1. symbol']}</span>
                                 <span className="text-gray-400 ml-2">{result['2. name']}</span>
                             </span>
+                             <span className="text-xs bg-gray-600 px-2 py-1 rounded-full">{result['3. type']}</span>
                         </li>
                     ))}
                 </ul>
@@ -827,7 +835,7 @@ const StockSearchView = ({ onSelectStock, isTradingActive }) => {
     );
 };
 
-const TradeModal = ({ user, competitionId, symbol, onClose }) => {
+const TradeModal = ({ user, competitionId, asset, onClose }) => { // UPDATED: prop name from 'symbol' to 'asset'
     const [quote, setQuote] = useState(null);
     const [loading, setLoading] = useState(true);
     const [tradeType, setTradeType] = useState('buy');
@@ -835,6 +843,9 @@ const TradeModal = ({ user, competitionId, symbol, onClose }) => {
     const [error, setError] = useState('');
     const [processing, setProcessing] = useState(false);
     
+    const symbol = asset['1. symbol']; // Extract symbol from asset object
+    const assetType = asset['3. type']; // Extract asset type
+
     useEffect(() => {
         const fetchQuote = async () => {
             setLoading(true);
@@ -893,7 +904,8 @@ const TradeModal = ({ user, competitionId, symbol, onClose }) => {
                             avgCost: newAvgCost, 
                             totalCost: newTotalCost, 
                             name: quote['2. name'] || symbol,
-                            originalSymbol: symbol 
+                            originalSymbol: symbol,
+                            assetType: assetType || 'Equity' // UPDATED: Save asset type
                         }
                     });
 
@@ -978,9 +990,10 @@ const CompetitionDetailPage = ({ user, competitionId, onBack, onDeleteCompetitio
     const [competition, setCompetition] = useState(null);
     const [participantData, setParticipantData] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [tradeModalSymbol, setTradeModalSymbol] = useState(null);
+    const [tradeModalAsset, setTradeModalAsset] = useState(null); // UPDATED: from symbol to asset
     const [isInviteModalOpen, setInviteModalOpen] = useState(false);
     const [stockPrices, setStockPrices] = useState({});
+    const [showDetailedPortfolio, setShowDetailedPortfolio] = useState(false); // NEW: State for view toggle
 
     useEffect(() => {
         const compRef = doc(db, 'competitions', competitionId);
@@ -988,7 +1001,6 @@ const CompetitionDetailPage = ({ user, competitionId, onBack, onDeleteCompetitio
             if (doc.exists()) {
                 setCompetition({ id: doc.id, ...doc.data() });
             } else {
-                // If competition is deleted while viewing, go back
                 onBack();
             }
             setLoading(false);
@@ -1012,21 +1024,20 @@ const CompetitionDetailPage = ({ user, competitionId, onBack, onDeleteCompetitio
             return;
         }
 
-        const symbols = Object.values(participantData.holdings).map(h => h.originalSymbol);
+        const symbols = Object.values(participantData.holdings).map(h => h.originalSymbol).filter(Boolean);
         if (symbols.length === 0) {
             setStockPrices({});
             return;
         }
 
         const unsubscribers = symbols.map(symbol => {
-            if (!symbol) return () => {};
             const docRef = doc(db, 'market_data', symbol);
             return onSnapshot(docRef, (doc) => {
                 if (doc.exists()) {
                     const data = doc.data();
                     setStockPrices(prevPrices => ({
                         ...prevPrices,
-                        [symbol]: data.price
+                        [symbol]: { price: data.price, change: data.change }
                     }));
                 }
             });
@@ -1036,10 +1047,9 @@ const CompetitionDetailPage = ({ user, competitionId, onBack, onDeleteCompetitio
 
     }, [participantData]);
 
+
     useEffect(() => {
-        if (!participantData || !competition || Object.keys(stockPrices).length === 0) {
-            return;
-        }
+        if (!participantData || !competition) return;
 
         const status = getCompetitionStatus(competition.startDate, competition.endDate);
         if (status.text !== 'Active') return;
@@ -1050,7 +1060,7 @@ const CompetitionDetailPage = ({ user, competitionId, onBack, onDeleteCompetitio
         let allPricesAvailable = true;
 
         Object.values(holdings).forEach(holding => {
-            const price = stockPrices[holding.originalSymbol];
+            const price = stockPrices[holding.originalSymbol]?.price;
             if (price === undefined) {
                 allPricesAvailable = false;
             } else {
@@ -1079,15 +1089,37 @@ const CompetitionDetailPage = ({ user, competitionId, onBack, onDeleteCompetitio
     const isOwner = user.uid === competition.ownerId;
     const isAdmin = user.role === 'admin';
     const canInvite = competition.isPublic || isOwner || isAdmin;
+    
+    // NEW: Function to open trade modal from detailed view
+    const handleTradeFromDetailed = (symbol) => {
+        const holding = Object.values(participantData.holdings).find(h => h.originalSymbol === symbol);
+        const asset = { '1. symbol': symbol, '3. type': holding?.assetType || 'Equity' };
+        setTradeModalAsset(asset);
+        setShowDetailedPortfolio(false); // Go back to the main competition view to show the modal
+    };
+    
+    // NEW: Conditional rendering for detailed portfolio
+    if (showDetailedPortfolio) {
+        return (
+            <Suspense fallback={<div className="p-8 text-white">Loading Portfolio...</div>}>
+                <DetailedPortfolioView 
+                    participantData={participantData}
+                    stockPrices={stockPrices}
+                    onTrade={handleTradeFromDetailed}
+                    onBack={() => setShowDetailedPortfolio(false)}
+                />
+            </Suspense>
+        );
+    }
 
     return (
         <div className="p-8 text-white">
-            {tradeModalSymbol && isTradingActive && (
+            {tradeModalAsset && isTradingActive && (
                 <TradeModal 
                     user={user}
                     competitionId={competitionId} 
-                    symbol={tradeModalSymbol} 
-                    onClose={() => setTradeModalSymbol(null)} 
+                    asset={tradeModalAsset} 
+                    onClose={() => setTradeModalAsset(null)} 
                 />
             )}
             {isInviteModalOpen && (
@@ -1126,8 +1158,13 @@ const CompetitionDetailPage = ({ user, competitionId, onBack, onDeleteCompetitio
                     <Leaderboard competitionId={competitionId} userId={user.uid} />
                 </div>
                 <div className="lg:col-span-1">
-                    <PortfolioView participantData={participantData} onTrade={setTradeModalSymbol} stockPrices={stockPrices} />
-                    <StockSearchView onSelectStock={setTradeModalSymbol} isTradingActive={isTradingActive} />
+                    <PortfolioView 
+                        participantData={participantData} 
+                        onTrade={setTradeModalAsset} 
+                        stockPrices={stockPrices}
+                        onViewDetails={() => setShowDetailedPortfolio(true)} // NEW: Pass handler
+                    />
+                    <StockSearchView onSelectStock={setTradeModalAsset} isTradingActive={isTradingActive} />
                 </div>
             </div>
         </div>
