@@ -39,7 +39,7 @@ const getCurrencyLists = async () => {
 
     console.log("Fetching and caching currency lists...");
     logApiCall(); // Log this as one interaction for both list fetches
-    
+
     const physicalCurrencyPromise = fetch(`${API_URL}?function=PHYSICAL_CURRENCY_LIST&apikey=${apiKey}`).then(res => res.json());
     const digitalCurrencyPromise = fetch(`${API_URL}?function=DIGITAL_CURRENCY_LIST&apikey=${apiKey}`).then(res => res.json());
 
@@ -63,7 +63,7 @@ const getCurrencyLists = async () => {
         console.warn('Could not fetch or parse digital currency list.', digitalCurrencyData);
         cache.digitalList = []; // Default to empty array on failure
     }
-    
+
     cache.lastFetch = now;
     return { digitalList: cache.digitalList, physicalSet: cache.physicalSet };
 };
@@ -90,8 +90,7 @@ export const searchSymbols = async (keywords) => {
         // 3. Filter the cached crypto list based on keywords
         const upperKeywords = keywords.toUpperCase();
         const cryptoResults = digitalList
-            .filter(({ symbol, name }) => 
-                !physicalSet.has(symbol) &&
+            .filter(({ symbol, name }) =>
                 (symbol.toUpperCase().includes(upperKeywords) || name.toUpperCase().includes(upperKeywords))
             )
             .map(({ symbol, name }) => ({
