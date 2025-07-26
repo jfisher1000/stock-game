@@ -14,7 +14,7 @@ import {
 
 // --- Helper Components & Functions ---
 
-const formatDate = (ts) => ts ? new Date(ts.seconds * 1000).toLocaleDateString() : 'N/A';
+const formatDate = (ts) => ts ? new Date(ts.seconds * 1000).toLocaleString() : 'N/A';
 
 const TrashIcon = ({ className = "w-5 h-5" }) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>;
 
@@ -175,6 +175,7 @@ const AdminPage = () => {
     const [allCompetitions, setAllCompetitions] = useState([]);
     const [allUsers, setAllUsers] = useState([]);
     const [competitionToDelete, setCompetitionToDelete] = useState(null);
+    const [lastBackendRun, setLastBackendRun] = useState(null);
 
     const settingsRef = doc(db, 'app_settings', 'market_data');
 
@@ -183,7 +184,6 @@ const AdminPage = () => {
         const unsubscribeLogs = onSnapshot(query(collection(db, 'api_logs'), where('timestamp', '>=', twoDaysAgo)), (snapshot) => {
             const calls = snapshot.docs.map(doc => doc.data().timestamp.toDate());
             
-            // --- Chart Data (Last 48 Hours) ---
             const callsByHour = calls.reduce((acc, callTime) => {
                 const hourKey = new Date(callTime.getFullYear(), callTime.getMonth(), callTime.getDate(), callTime.getHours()).toISOString();
                 acc[hourKey] = (acc[hourKey] || 0) + 1;
@@ -194,21 +194,16 @@ const AdminPage = () => {
                 .sort(([hourA], [hourB]) => new Date(hourA) - new Date(hourB))
                 .map(([hourISO, count]) => {
                     const date = new Date(hourISO);
-                    return {
-                        timeLabel: `${date.getMonth() + 1}/${date.getDate()} ${date.getHours()}:00`,
-                        calls: count,
-                    };
+                    return { timeLabel: `${date.getMonth() + 1}/${date.getDate()} ${date.getHours()}:00`, calls: count };
                 });
             setChartData(formattedData);
 
-            // --- Stats (Last Hour) ---
             const oneHourAgo = Date.now() - 60 * 60 * 1000;
             const recentCalls = calls.filter(call => call.getTime() > oneHourAgo);
             
             const totalRecentCalls = recentCalls.length;
             const avg = totalRecentCalls > 0 ? totalRecentCalls / 60 : 0;
 
-            // Calculate Peak Calls Per Minute
             const callsByMinute = recentCalls.reduce((acc, callTime) => {
                 const minuteKey = new Date(callTime.getFullYear(), callTime.getMonth(), callTime.getDate(), callTime.getHours(), callTime.getMinutes()).toISOString();
                 acc[minuteKey] = (acc[minuteKey] || 0) + 1;
@@ -222,8 +217,9 @@ const AdminPage = () => {
 
         const unsubscribeSettings = onSnapshot(settingsRef, (doc) => {
             if (doc.exists()) {
-                const interval = doc.data().refreshIntervalMinutes;
-                setInputInterval(String(interval));
+                const data = doc.data();
+                setInputInterval(String(data.refreshIntervalMinutes));
+                setLastBackendRun(data.lastRunTimestamp || null);
             } else {
                 setDoc(settingsRef, { refreshIntervalMinutes: 10, lastRunTimestamp: null });
             }
@@ -231,14 +227,12 @@ const AdminPage = () => {
 
         const compsQuery = query(collection(db, 'competitions'));
         const unsubscribeCompetitions = onSnapshot(compsQuery, (snapshot) => {
-            const fetchedComps = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setAllCompetitions(fetchedComps);
+            setAllCompetitions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         });
         
         const usersQuery = query(collection(db, 'users'));
         const unsubscribeUsers = onSnapshot(usersQuery, (snapshot) => {
-            const fetchedUsers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setAllUsers(fetchedUsers);
+            setAllUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         });
 
         return () => {
@@ -251,12 +245,7 @@ const AdminPage = () => {
 
     const handleSaveInterval = async () => {
         setSaveStatus('Saving...');
-        
-        // --- DIAGNOSTIC LOG ---
-        console.log(`Attempting to save interval. Input value: "${inputInterval}", Type: ${typeof inputInterval}`);
-        
         const newInterval = parseFloat(inputInterval);
-        
         if (isNaN(newInterval) || newInterval < 0.1) {
             setSaveStatus('Error: Please enter a number 0.1 or greater.');
             return;
@@ -317,38 +306,31 @@ const AdminPage = () => {
                     <h2 className="text-2xl font-bold mb-4">API Stats (Last Hour)</h2>
                     {loading ? <p>Loading stats...</p> : (
                         <div className="space-y-4">
-                            <div>
-                                <p className="text-gray-400">Total Calls</p>
-                                <p className="text-3xl font-bold">{apiStats.total}</p>
-                            </div>
-                            <div>
-                                <p className="text-gray-400">Average Calls / Minute</p>
-                                <p className="text-3xl font-bold">{apiStats.avgPerMinute}</p>
-                            </div>
-                             <div>
-                                <p className="text-gray-400">Peak Calls in a Single Minute</p>
-                                <p className="text-3xl font-bold text-yellow-400">{apiStats.peakPerMinute}</p>
-                            </div>
+                            <div><p className="text-gray-400">Total Calls</p><p className="text-3xl font-bold">{apiStats.total}</p></div>
+                            <div><p className="text-gray-400">Average Calls / Minute</p><p className="text-3xl font-bold">{apiStats.avgPerMinute}</p></div>
+                            <div><p className="text-gray-400">Peak Calls in a Single Minute</p><p className="text-3xl font-bold text-yellow-400">{apiStats.peakPerMinute}</p></div>
                         </div>
                     )}
                 </div>
+                
                 <div className="glass-card p-6 rounded-lg lg:col-span-2">
                      <h2 className="text-2xl font-bold mb-4">App Settings</h2>
-                     <div className="space-y-2">
-                        <label className="block text-gray-300">Market Data Refresh Interval (minutes)</label>
-                        <div className="flex items-center gap-2">
-                            <input 
-                                type="number" 
-                                value={inputInterval}
-                                onChange={(e) => setInputInterval(e.target.value)}
-                                step="0.1"
-                                min="0.1"
-                                className="w-full bg-black/20 p-3 rounded-md border border-white/20" 
-                            />
-                            <button onClick={handleSaveInterval} className="py-3 px-5 rounded-md bg-primary hover:opacity-90">Save</button>
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label className="block text-gray-300">Market Data Refresh Interval (minutes)</label>
+                            <div className="flex items-center gap-2 mt-2">
+                                <input type="number" value={inputInterval} onChange={(e) => setInputInterval(e.target.value)} step="0.1" min="0.1" className="w-full bg-black/20 p-3 rounded-md border border-white/20" />
+                                <button onClick={handleSaveInterval} className="py-3 px-5 rounded-md bg-primary hover:opacity-90">Save</button>
+                            </div>
+                            {saveStatus && <p className="text-sm mt-2">{saveStatus}</p>}
+                            <p className="text-xs text-gray-400 mt-2">Controls how often the server fetches prices. Use decimals for intervals under 1 minute (e.g., 0.5 for 30 seconds). Be cautious with low values.</p>
                         </div>
-                        {saveStatus && <p className="text-sm mt-2">{saveStatus}</p>}
-                        <p className="text-xs text-gray-400">Controls how often the server fetches prices. Use decimals for intervals under 1 minute (e.g., 0.5 for 30 seconds). Be cautious with low values.</p>
+                        <div className="bg-black/20 p-4 rounded-lg">
+                            <h3 className="text-lg font-bold">Backend Status</h3>
+                            <p className="text-gray-400 text-sm mt-2">Last Successful Price Update:</p>
+                            <p className="text-xl font-mono mt-1">{lastBackendRun ? formatDate(lastBackendRun) : 'Never'}</p>
+                            <p className="text-xs text-gray-500 mt-2">This should update roughly every minute if the system is healthy.</p>
+                        </div>
                      </div>
                 </div>
 
