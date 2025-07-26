@@ -169,7 +169,7 @@ const UserManagement = ({ users, onRoleChange }) => {
 const AdminPage = () => {
     const [apiStats, setApiStats] = useState({ total: 0, avgPerMinute: 0, peakPerMinute: 0 });
     const [loading, setLoading] = useState(true);
-    const [inputInterval, setInputInterval] = useState(10);
+    const [inputInterval, setInputInterval] = useState('10');
     const [saveStatus, setSaveStatus] = useState('');
     const [chartData, setChartData] = useState([]);
     const [allCompetitions, setAllCompetitions] = useState([]);
@@ -223,7 +223,7 @@ const AdminPage = () => {
         const unsubscribeSettings = onSnapshot(settingsRef, (doc) => {
             if (doc.exists()) {
                 const interval = doc.data().refreshIntervalMinutes;
-                setInputInterval(interval);
+                setInputInterval(String(interval));
             } else {
                 setDoc(settingsRef, { refreshIntervalMinutes: 10, lastRunTimestamp: null });
             }
