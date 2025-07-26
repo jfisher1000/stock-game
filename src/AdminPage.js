@@ -8,7 +8,8 @@ import {
     onSnapshot,
     updateDoc,
     setDoc,
-    deleteDoc
+    deleteDoc,
+    getDocs
 } from 'firebase/firestore';
 
 // --- Helper Components & Functions ---
@@ -251,8 +252,8 @@ const AdminPage = () => {
     const handleSaveInterval = async () => {
         setSaveStatus('Saving...');
         const newInterval = parseFloat(inputInterval);
-        if (isNaN(newInterval) || newInterval <= 0) {
-            setSaveStatus('Error: Please enter a number greater than 0.');
+        if (isNaN(newInterval) || newInterval < 0.1) {
+            setSaveStatus('Error: Please enter a number 0.1 or greater.');
             return;
         }
         try {
