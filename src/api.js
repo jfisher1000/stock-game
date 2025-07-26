@@ -1,5 +1,5 @@
 // src/api.js
-import { db } from './firebase'; // Import the db instance
+import { db } from './firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
 const apiKey = process.env.REACT_APP_ALPHA_VANTAGE_API_KEY;
@@ -18,10 +18,58 @@ const logApiCall = async () => {
     }
 };
 
+// --- Caching Mechanism for currency lists ---
+const cache = {
+    digitalList: null,
+    physicalSet: null,
+    lastFetch: 0,
+};
+
+const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
 /**
- * Searches for stock symbols AND cryptocurrencies based on keywords.
- * This function now performs two API calls in parallel to get both types of assets.
+ * Fetches the complete lists of digital and physical currencies from the API
+ * and caches them for 24 hours to avoid exceeding API limits.
+ */
+const getCurrencyLists = async () => {
+    const now = Date.now();
+    if (now - cache.lastFetch < CACHE_DURATION && cache.digitalList) {
+        return { digitalList: cache.digitalList, physicalSet: cache.physicalSet };
+    }
+
+    console.log("Fetching and caching currency lists...");
+    logApiCall(); // Log this as one interaction for both list fetches
+    
+    const physicalCurrencyPromise = fetch(`${API_URL}?function=PHYSICAL_CURRENCY_LIST&apikey=${apiKey}`).then(res => res.json());
+    const digitalCurrencyPromise = fetch(`${API_URL}?function=DIGITAL_CURRENCY_LIST&apikey=${apiKey}`).then(res => res.json());
+
+    const [physicalCurrencyData, digitalCurrencyData] = await Promise.all([physicalCurrencyPromise, digitalCurrencyPromise]);
+
+    if (physicalCurrencyData && typeof physicalCurrencyData === 'string') {
+        cache.physicalSet = new Set(
+            physicalCurrencyData.split('\r\n').slice(1).map(row => row.split(',')[0]).filter(Boolean)
+        );
+    } else {
+        console.warn('Could not fetch or parse physical currency list.', physicalCurrencyData);
+        cache.physicalSet = new Set(); // Default to empty set on failure
+    }
+
+    if (digitalCurrencyData && typeof digitalCurrencyData === 'string') {
+        cache.digitalList = digitalCurrencyData.split('\r\n').slice(1).map(row => {
+            const [symbol, name] = row.split(',');
+            return { symbol, name };
+        }).filter(c => c.symbol && c.name); // Filter out any empty/invalid rows
+    } else {
+        console.warn('Could not fetch or parse digital currency list.', digitalCurrencyData);
+        cache.digitalList = []; // Default to empty array on failure
+    }
+    
+    cache.lastFetch = now;
+    return { digitalList: cache.digitalList, physicalSet: cache.physicalSet };
+};
+
+/**
+ * Searches for stock symbols (live) and cryptocurrencies (from cache) based on keywords.
  */
 export const searchSymbols = async (keywords) => {
     if (!keywords) return [];
@@ -30,23 +78,32 @@ export const searchSymbols = async (keywords) => {
         return [];
     }
 
-    // 1. API call for traditional stock/ETF search
+    // 1. Get currency lists (from cache or new fetch)
+    const { digitalList, physicalSet } = await getCurrencyLists();
+
+    // 2. Perform the live stock search
     const stockSearchUrl = `${API_URL}?function=SYMBOL_SEARCH&keywords=${keywords}&apikey=${apiKey}`;
     const stockPromise = fetch(stockSearchUrl).then(res => res.json());
-
-    // 2. API call to get a list of all physical currencies to filter out from crypto results
-    const physicalCurrencyPromise = fetch(`${API_URL}?function=PHYSICAL_CURRENCY_LIST&apikey=${apiKey}`).then(res => res.json());
-    
-    // 3. API call to get a list of all digital (crypto) currencies
-    const digitalCurrencyPromise = fetch(`${API_URL}?function=DIGITAL_CURRENCY_LIST&apikey=${apiKey}`).then(res => res.json());
-
-    // Log a single API interaction event, even though we make multiple calls
     logApiCall();
 
     try {
-        const [stockData, physicalCurrencyData, digitalCurrencyData] = await Promise.all([stockPromise, physicalCurrencyPromise, digitalCurrencyPromise]);
+        // 3. Filter the cached crypto list based on keywords
+        const upperKeywords = keywords.toUpperCase();
+        const cryptoResults = digitalList
+            .filter(({ symbol, name }) => 
+                !physicalSet.has(symbol) &&
+                (symbol.toUpperCase().includes(upperKeywords) || name.toUpperCase().includes(upperKeywords))
+            )
+            .map(({ symbol, name }) => ({
+                '1. symbol': symbol,
+                '2. name': name,
+                '3. type': 'Cryptocurrency',
+                '4. region': 'N/A',
+                '8. currency': 'USD'
+            }));
 
-        // Process stock results
+        // 4. Process stock results from the live API call
+        const stockData = await stockPromise;
         let stockResults = [];
         if (stockData.bestMatches) {
             stockResults = stockData.bestMatches;
@@ -54,44 +111,7 @@ export const searchSymbols = async (keywords) => {
             console.warn('Alpha Vantage API Note (Stocks):', stockData.Note);
         }
 
-        // Process crypto results
-        let cryptoResults = [];
-        
-        // **FIX**: Added robust checks to ensure both API responses are valid CSV strings before parsing.
-        let physicalCurrencySet = new Set();
-        if (physicalCurrencyData && typeof physicalCurrencyData === 'string') {
-            physicalCurrencySet = new Set(
-                physicalCurrencyData.split('\r\n').slice(1).map(row => row.split(',')[0])
-            );
-        } else if (physicalCurrencyData && physicalCurrencyData.Note) {
-            console.warn('Alpha Vantage API Note (Physical Currencies):', physicalCurrencyData.Note);
-        }
-
-        if (digitalCurrencyData && typeof digitalCurrencyData === 'string') {
-            const digitalCurrencies = digitalCurrencyData.split('\r\n').slice(1).map(row => {
-                const [symbol, name] = row.split(',');
-                return { symbol, name };
-            });
-
-            const upperKeywords = keywords.toUpperCase();
-            cryptoResults = digitalCurrencies
-                .filter(({ symbol, name }) => 
-                    symbol && name && // Ensure row is valid
-                    !physicalCurrencySet.has(symbol) && // Exclude physical currencies like 'USD'
-                    (symbol.toUpperCase().includes(upperKeywords) || name.toUpperCase().includes(upperKeywords))
-                )
-                .map(({ symbol, name }) => ({
-                    '1. symbol': symbol,
-                    '2. name': name,
-                    '3. type': 'Cryptocurrency',
-                    '4. region': 'N/A', // Add dummy fields to match stock structure
-                    '8. currency': 'USD'
-                }));
-        } else if (digitalCurrencyData && digitalCurrencyData.Note) {
-             console.warn('Alpha Vantage API Note (Crypto):', digitalCurrencyData.Note);
-        }
-
-        // Combine and return results, with crypto appearing first
+        // 5. Combine and return
         return [...cryptoResults, ...stockResults];
 
     } catch (error) {
@@ -100,9 +120,8 @@ export const searchSymbols = async (keywords) => {
     }
 };
 
-
 /**
- * Fetches the latest price for a given stock symbol.
+ * Fetches the latest price for a given stock or crypto symbol.
  */
 export const getQuote = async (symbol) => {
     if (!symbol) return null;
