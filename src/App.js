@@ -49,7 +49,7 @@ const getCompetitionStatus = (startDate, endDate) => {
 
 
 const Icon = ({ path, className = "w-6 h-6" }) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={path}></path></svg>;
-const CompetitionsIcon = () => <Icon path="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />;
+const HomeIcon = () => <Icon path="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-7-4a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />;
 const ExploreIcon = () => <Icon path="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />;
 const ProfileIcon = () => <Icon path="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />;
 const LogoutIcon = () => <Icon path="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />;
@@ -453,7 +453,7 @@ const Leaderboard = ({ competitionId }) => {
     );
 };
 
-const MyCompetitionsPage = ({ user, onSelectCompetition, onDeleteCompetition }) => {
+const HomePage = ({ user, onSelectCompetition, onDeleteCompetition }) => {
     const [competitions, setCompetitions] = useState([]);
     const [loading, setLoading] = useState(true);
 
@@ -467,27 +467,52 @@ const MyCompetitionsPage = ({ user, onSelectCompetition, onDeleteCompetition }) 
         return () => unsubscribe();
     }, [user]);
 
+    const ownedCompetitions = competitions.filter(c => c.ownerId === user.uid);
+    const joinedCompetitions = competitions.filter(c => c.ownerId !== user.uid);
+
     if (loading) return <p className="p-8 text-white">Loading your competitions...</p>;
 
     return (
         <div className="p-8 text-white">
             <PendingInvitations user={user} />
-            <h1 className="text-4xl font-bold mb-6 mt-8">My Competitions</h1>
-            {competitions.length === 0 ? (
-                <p>You haven't joined any competitions yet. Go to Explore to find one!</p>
-            ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {competitions.map(comp => 
-                        <CompetitionCard 
-                            key={comp.id} 
-                            competition={comp} 
-                            user={user}
-                            onClick={() => onSelectCompetition(comp.id)}
-                            onDelete={() => onDeleteCompetition(comp)}
-                        />
-                    )}
-                </div>
-            )}
+            
+            <div className="mt-8">
+                <h1 className="text-4xl font-bold mb-6">Competitions You Own</h1>
+                {ownedCompetitions.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {ownedCompetitions.map(comp => 
+                            <CompetitionCard 
+                                key={comp.id} 
+                                competition={comp} 
+                                user={user}
+                                onClick={() => onSelectCompetition(comp.id)}
+                                onDelete={() => onDeleteCompetition(comp)}
+                            />
+                        )}
+                    </div>
+                ) : (
+                    <p>You haven't created any competitions yet. Click "Create Competition" to start one!</p>
+                )}
+            </div>
+
+            <div className="mt-12">
+                <h1 className="text-4xl font-bold mb-6">Competitions You've Joined</h1>
+                {joinedCompetitions.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {joinedCompetitions.map(comp => 
+                            <CompetitionCard 
+                                key={comp.id} 
+                                competition={comp} 
+                                user={user}
+                                onClick={() => onSelectCompetition(comp.id)}
+                                onDelete={() => onDeleteCompetition(comp)}
+                            />
+                        )}
+                    </div>
+                ) : (
+                    <p>You haven't joined any competitions yet. Go to the Explore page to find one!</p>
+                )}
+            </div>
         </div>
     );
 };
@@ -536,7 +561,7 @@ const CompetitionCard = ({ user, competition, onClick, onDelete }) => {
 };
 
 
-const ExplorePage = ({ user }) => {
+const ExplorePage = ({ user, onJoinCompetition }) => {
     const [competitions, setCompetitions] = useState([]);
     const [loading, setLoading] = useState(true);
 
@@ -545,19 +570,17 @@ const ExplorePage = ({ user }) => {
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const upcominAndActive = snapshot.docs
                 .map(doc => ({ id: doc.id, ...doc.data() }))
-                .filter(comp => getCompetitionStatus(comp.startDate, comp.endDate).text !== 'Ended');
+                .filter(comp => {
+                    const status = getCompetitionStatus(comp.startDate, comp.endDate).text;
+                    return (status === 'Upcoming' || status === 'Active') && !comp.participantIds.includes(user.uid);
+                });
             setCompetitions(upcominAndActive);
             setLoading(false);
         });
         return () => unsubscribe();
-    }, []);
+    }, [user.uid]);
     
     const handleJoin = async (comp) => {
-        if ((comp.participantIds || []).includes(user.uid)) {
-            alert("You've already joined this competition!");
-            return;
-        }
-
         const batch = writeBatch(db);
         const participantRef = doc(db, 'competitions', comp.id, 'participants', user.uid);
         batch.set(participantRef, {
@@ -576,6 +599,7 @@ const ExplorePage = ({ user }) => {
         try {
             await batch.commit();
             alert("Successfully joined!");
+            onJoinCompetition(comp.id); // Navigate to the competition page
         } catch (error) {
             console.error("Error joining competition: ", error);
             alert("Failed to join competition.");
@@ -601,12 +625,12 @@ const ExplorePage = ({ user }) => {
                         </div>
                         <button 
                             onClick={() => handleJoin(comp)}
-                            disabled={(comp.participantIds || []).includes(user.uid)}
-                            className="mt-4 w-full bg-primary hover:opacity-90 text-white font-bold py-2 rounded-md transition duration-300 disabled:bg-gray-500 disabled:cursor-not-allowed">
-                            {(comp.participantIds || []).includes(user.uid) ? 'Joined' : 'Join'}
+                            className="mt-4 w-full bg-primary hover:opacity-90 text-white font-bold py-2 rounded-md transition duration-300">
+                            Join Competition
                         </button>
                     </div>
                 ))}
+                 {competitions.length === 0 && <p>There are no public competitions to join right now. Why not create one?</p>}
             </div>
         </div>
     );
@@ -1028,7 +1052,7 @@ const CompetitionDetailPage = ({ user, competitionId, onBack, onDeleteCompetitio
                 />
             )}
             <div className="flex justify-between items-start mb-6">
-                 <button onClick={onBack} className="text-primary hover:underline">{'< Back to My Competitions'}</button>
+                 <button onClick={onBack} className="text-primary hover:underline">{'< Back to Home'}</button>
                  <div className="flex items-center gap-4">
                     {canInvite && (
                         <button onClick={() => setInviteModalOpen(true)} className="bg-primary/80 hover:bg-primary text-white font-bold py-2 px-4 rounded-md flex items-center gap-2">
@@ -1077,7 +1101,7 @@ const SideBar = ({ user, activeTab, onNavigate }) => {
         <div className="w-64 glass-card h-screen flex-shrink-0 flex flex-col p-4">
             <div className="flex items-center mb-8"><h1 className="text-2xl font-bold text-white">Stock Game</h1></div>
             <ul className="flex-grow">
-                <NavItem icon={<CompetitionsIcon />} label="My Competitions" name="competitions" />
+                <NavItem icon={<HomeIcon />} label="Home" name="home" />
                 <NavItem icon={<ExploreIcon />} label="Explore" name="explore" />
                 {user.role === 'admin' && <NavItem icon={<AdminIcon />} label="Admin" name="admin" />}
             </ul>
@@ -1093,7 +1117,7 @@ const SideBar = ({ user, activeTab, onNavigate }) => {
 function App() {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState('competitions');
+    const [activeTab, setActiveTab] = useState('home');
     const [isCreateModalOpen, setCreateModalOpen] = useState(false);
     const [selectedCompetitionId, setSelectedCompetitionId] = useState(null);
     const [competitionToDelete, setCompetitionToDelete] = useState(null);
@@ -1156,25 +1180,25 @@ function App() {
             );
         }
         switch (activeTab) {
-            case 'competitions':
+            case 'home':
                 return (
-                    <MyCompetitionsPage 
+                    <HomePage 
                         user={user} 
                         onSelectCompetition={setSelectedCompetitionId} 
                         onDeleteCompetition={handleDeleteCompetitionClick}
                     />
                 );
             case 'explore':
-                return <ExplorePage user={user} />;
+                return <ExplorePage user={user} onJoinCompetition={setSelectedCompetitionId} />;
             case 'admin':
                 if (user?.role === 'admin') {
                     return <AdminPage />;
                 } else {
-                     setActiveTab('competitions'); // Fallback for non-admins
-                     return <MyCompetitionsPage user={user} onSelectCompetition={setSelectedCompetitionId} onDeleteCompetition={handleDeleteCompetitionClick}/>;
+                     setActiveTab('home'); // Fallback for non-admins
+                     return <HomePage user={user} onSelectCompetition={setSelectedCompetitionId} onDeleteCompetition={handleDeleteCompetitionClick}/>;
                 }
             default:
-                return <MyCompetitionsPage user={user} onSelectCompetition={setSelectedCompetitionId} onDeleteCompetition={handleDeleteCompetitionClick}/>;
+                return <HomePage user={user} onSelectCompetition={setSelectedCompetitionId} onDeleteCompetition={handleDeleteCompetitionClick}/>;
         }
     };
 
