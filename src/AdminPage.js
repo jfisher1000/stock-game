@@ -251,7 +251,12 @@ const AdminPage = () => {
 
     const handleSaveInterval = async () => {
         setSaveStatus('Saving...');
+        
+        // --- DIAGNOSTIC LOG ---
+        console.log(`Attempting to save interval. Input value: "${inputInterval}", Type: ${typeof inputInterval}`);
+        
         const newInterval = parseFloat(inputInterval);
+        
         if (isNaN(newInterval) || newInterval < 0.1) {
             setSaveStatus('Error: Please enter a number 0.1 or greater.');
             return;
