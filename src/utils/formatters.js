@@ -8,7 +8,6 @@
  */
 export const formatCurrency = (amount) => {
     if (typeof amount !== 'number') {
-        // Return a default, safe value if the input is not a number
         return '$0.00';
     }
     return new Intl.NumberFormat('en-US', {
@@ -25,7 +24,6 @@ export const formatCurrency = (amount) => {
  */
 export const formatPercentage = (amount) => {
     if (typeof amount !== 'number') {
-        // Return a default, safe value if the input is not a number
         return '0.00%';
     }
     return new Intl.NumberFormat('en-US', {
@@ -34,3 +32,16 @@ export const formatPercentage = (amount) => {
         maximumFractionDigits: 2,
     }).format(amount);
 }
+
+/**
+ * Sanitizes a stock symbol for use as a Firestore document ID.
+ * Replaces invalid characters (like '.') with underscores.
+ * @param {string} symbol - The stock symbol to sanitize.
+ * @returns {string} The sanitized symbol.
+ */
+export const sanitizeSymbolForFirestore = (symbol) => {
+    if (typeof symbol !== 'string') {
+        return '';
+    }
+    return symbol.replace(/\./g, '_');
+};
