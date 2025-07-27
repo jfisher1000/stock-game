@@ -56,6 +56,13 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-secondary text-foreground;
+  }
+}
+
+/* This new layer styles the old custom card class to work with the new theme */
+@layer components {
+  .glass-card {
+    @apply bg-card border rounded-lg;
   }
 }
