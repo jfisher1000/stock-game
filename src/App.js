@@ -25,6 +25,8 @@ import {
     updateDoc
 } from 'firebase/firestore';
 import { searchSymbols, getQuote } from './api';
+import { formatDate, formatCurrency, sanitizeSymbolForFirestore, getCompetitionStatus } from './utils/formatters';
+
 
 // Lazy load AdminPage and the new DetailedPortfolioView
 const AdminPage = React.lazy(() => import('./AdminPage'));
@@ -32,23 +34,6 @@ const DetailedPortfolioView = React.lazy(() => import('./DetailedPortfolioView')
 
 
 // --- Helper & Icon Components ---
-const formatDate = (ts) => ts ? new Date(ts.seconds * 1000).toLocaleDateString() : 'N/A';
-const formatCurrency = (amount) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
-const sanitizeSymbolForFirestore = (symbol) => symbol.replace(/\./g, '_');
-
-const getCompetitionStatus = (startDate, endDate) => {
-    const now = new Date();
-    const start = startDate ? startDate.toDate() : null;
-    const end = endDate ? endDate.toDate() : null;
-
-    if (!start || !end) return { text: 'Invalid Dates', color: 'bg-gray-500' };
-
-    if (now < start) return { text: 'Upcoming', color: 'bg-blue-500' };
-    if (now > end) return { text: 'Ended', color: 'bg-red-700' };
-    return { text: 'Active', color: 'bg-green-500' };
-};
-
-
 const Icon = ({ path, className = "w-6 h-6" }) => <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={path}></path></svg>;
 const HomeIcon = () => <Icon path="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-7-4a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />;
 const ExploreIcon = () => <Icon path="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />;
