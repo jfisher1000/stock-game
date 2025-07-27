@@ -10,13 +10,4 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
-  // This configuration tells Vite to treat .js files as .jsx files,
-  // which is necessary because your project uses JSX syntax in .js files.
-  esbuild: {
-    loader: 'jsx',
-    include: [
-      'src/**/*.js',
-      'src/**/*.jsx',
-    ],
-  },
 })
