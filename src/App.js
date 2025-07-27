@@ -884,15 +884,11 @@ const TradeModal = ({ user, competitionId, asset, stockPrices, onClose }) => {
         const sanitizedSymbol = sanitizeSymbolForFirestore(symbol);
 
         try {
-            console.log("Starting Firestore transaction...");
             await runTransaction(db, async (transaction) => {
-                console.log("Inside transaction: Reading participant document...");
                 const participantDoc = await transaction.get(participantRef);
-                
                 if (!participantDoc.exists()) {
                     throw new Error("Your participant data could not be found.");
                 }
-                console.log("Inside transaction: Participant document read successfully.");
 
                 const data = participantDoc.data();
                 const currentCash = data.cash;
@@ -940,31 +936,26 @@ const TradeModal = ({ user, competitionId, asset, stockPrices, onClose }) => {
                     }
                 }
 
-                console.log("Inside transaction: Calculations complete. Preparing update.");
-                
+                // Recalculate total portfolio value
                 let newTotalStockValue = 0;
                 for (const holding of Object.values(newHoldings)) {
-                    const holdingPrice = stockPrices[holding.originalSymbol]?.price || holding.avgCost;
+                     // **BUG FIX**: Use the live price for the asset being traded for the most accurate calculation
+                    const isCurrentAsset = holding.originalSymbol === symbol;
+                    const holdingPrice = isCurrentAsset ? price : (stockPrices[holding.originalSymbol]?.price || holding.avgCost);
                     newTotalStockValue += holdingPrice * holding.shares;
                 }
                 const newPortfolioValue = newCash + newTotalStockValue;
-                
-                const updatePayload = {
+
+                transaction.update(participantRef, {
                     cash: newCash,
                     holdings: newHoldings,
                     portfolioValue: newPortfolioValue
-                };
-                
-                console.log("Inside transaction: Updating document with payload:", updatePayload);
-                transaction.update(participantRef, updatePayload);
-                console.log("Inside transaction: Update command issued.");
+                });
             });
-            console.log("Firestore transaction completed successfully.");
             onClose();
         } catch (e) {
-            console.error("Firestore transaction failed:", e);
-            setError(`Transaction failed: ${e.message} (Code: ${e.code})`);
-        } finally {
+            console.error("Transaction failed: ", e);
+            setError(e.message || "An unexpected error occurred during the transaction.");
             setProcessing(false);
         }
     };
