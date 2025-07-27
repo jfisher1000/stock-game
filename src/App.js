@@ -14,7 +14,7 @@ import AlertsPage from './pages/AlertsPage';
 import CompetitionDetailPage from './pages/CompetitionDetailPage';
 
 // Lazy load AdminPage
-const AdminPage = React.lazy(() => import('./AdminPage'));
+const AdminPage = React.lazy(() => import('./pages/AdminPage'));
 
 function App() {
     const [user, setUser] = useState(null);
