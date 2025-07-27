@@ -27,8 +27,7 @@ const DetailedPortfolioView = ({ holdings }) => {
         return <p className="text-center text-muted-foreground mt-4">No stocks in this portfolio yet.</p>;
     }
 
-    // Filter out any holdings that are missing essential data (like a symbol) before rendering.
-    // This is the most robust way to prevent crashes from bad data.
+    // Filter out any holdings that are missing a symbol to prevent rendering errors.
     const validHoldings = holdings.filter(holding => holding && holding.symbol);
 
     return (
@@ -45,16 +44,16 @@ const DetailedPortfolioView = ({ holdings }) => {
                 </TableHeader>
                 <TableBody>
                     {validHoldings.map((holding) => {
-                        const marketValue = typeof holding.value === 'number' ? formatCurrency(holding.value) : '-';
-                        const dayChange = typeof holding.dayChange === 'number' ? formatCurrency(holding.dayChange) : null;
-                        const dayChangePercent = typeof holding.dayChangePercent === 'number' ? formatPercentage(holding.dayChangePercent) : null;
-                        const dayChangeDisplay = dayChange && dayChangePercent ? `${dayChange} (${dayChangePercent})` : '-';
+                        // We can now call the formatters directly, as they are safe.
+                        const dayChangeDisplay = (typeof holding.dayChange === 'number' && typeof holding.dayChangePercent === 'number')
+                            ? `${formatCurrency(holding.dayChange)} (${formatPercentage(holding.dayChangePercent)})`
+                            : '-';
 
                         return (
                             <TableRow key={holding.symbol}>
                                 <TableCell className="font-medium">{holding.symbol}</TableCell>
-                                <TableCell>{typeof holding.shares === 'number' ? holding.shares : '-'}</TableCell>
-                                <TableCell className="text-right">{marketValue}</TableCell>
+                                <TableCell>{holding.shares || '-'}</TableCell>
+                                <TableCell className="text-right">{formatCurrency(holding.value)}</TableCell>
                                 <TableCell className={`text-right font-medium ${getChangeColor(holding.dayChange)}`}>
                                     {dayChangeDisplay}
                                     <ChangeIndicator change={holding.dayChange} />
