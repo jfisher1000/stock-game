@@ -1,53 +1,61 @@
 import React, { useState } from 'react';
-import { formatCurrency } from '../../utils/formatters.js';
-import DetailedPortfolioView from './DetailedPortfolioView.jsx';
-import { Button } from '../ui/button.jsx';
+import { usePortfolio } from '@/hooks/usePortfolio';
+import { formatCurrency, formatPercentage } from '@/utils/formatters';
+import { Button } from '@/components/ui/button';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import TradeModal from './TradeModal';
 
-const PortfolioView = ({ participantData }) => {
-    const [showDetailedView, setShowDetailedView] = useState(false);
+const PortfolioView = ({ competitionId }) => {
+  const { portfolio, loading, error } = usePortfolio(competitionId);
+  const [selectedStock, setSelectedStock] = useState(null);
 
-    if (!participantData || !participantData.portfolio) {
-        return (
-            <div className="glass-card p-6 rounded-lg text-center">
-                <p className="text-muted-foreground">No portfolio data available.</p>
-            </div>
-        );
-    }
+  if (loading) return <div>Loading portfolio...</div>;
+  if (error) return <div className="text-destructive">Error: {error.message}</div>;
+  if (!portfolio) return <div>No portfolio data found.</div>;
 
-    const { portfolio } = participantData;
-    const holdingsValue = Array.isArray(portfolio.holdings)
-        ? portfolio.holdings.reduce((acc, holding) => acc + (holding.value || 0), 0)
-        : 0;
-    const totalValue = (portfolio.cash || 0) + holdingsValue;
+  const handleTradeClick = (stock) => {
+    setSelectedStock(stock);
+  };
 
-    return (
-        <div className="glass-card p-6 rounded-lg">
-            <div className="flex justify-between items-start">
-                <div>
-                    <h3 className="text-lg font-semibold text-muted-foreground">Portfolio Value</h3>
-                    <p className="text-3xl font-bold text-foreground">{formatCurrency(totalValue)}</p>
-                </div>
-                <Button variant="outline" onClick={() => setShowDetailedView(!showDetailedView)}>
-                    {showDetailedView ? 'Hide Details' : 'Show Details'}
-                </Button>
-            </div>
-            <div className="mt-4">
-                <div className="flex justify-between text-muted-foreground">
-                    <span>Cash</span>
-                    <span>{formatCurrency(portfolio.cash || 0)}</span>
-                </div>
-                <div className="flex justify-between text-muted-foreground">
-                    <span>Stocks</span>
-                    <span>{formatCurrency(holdingsValue)}</span>
-                </div>
-            </div>
-            {showDetailedView && (
-                <div className="mt-6">
-                    <DetailedPortfolioView holdings={portfolio.holdings || []} />
-                </div>
-            )}
-        </div>
-    );
+  return (
+    <div>
+      <div className="mb-4">
+        <h3 className="text-lg font-semibold">Total Value: {formatCurrency(portfolio.totalValue)}</h3>
+        <p>Cash: {formatCurrency(portfolio.cash)}</p>
+      </div>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Symbol</TableHead>
+            <TableHead>Shares</TableHead>
+            <TableHead>Current Price</TableHead>
+            <TableHead>Total Value</TableHead>
+            <TableHead>Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {portfolio.holdings.map((stock) => (
+            <TableRow key={stock.symbol}>
+              <TableCell>{stock.symbol}</TableCell>
+              <TableCell>{stock.shares}</TableCell>
+              <TableCell>{formatCurrency(stock.currentPrice)}</TableCell>
+              <TableCell>{formatCurrency(stock.totalValue)}</TableCell>
+              <TableCell>
+                <Button onClick={() => handleTradeClick(stock)}>Trade</Button>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+      {selectedStock && (
+        <TradeModal
+          symbol={selectedStock.symbol}
+          competitionId={competitionId}
+          onTrade={() => setSelectedStock(null)}
+        />
+      )}
+    </div>
+  );
 };
 
 export default PortfolioView;
