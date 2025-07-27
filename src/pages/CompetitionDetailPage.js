@@ -9,7 +9,7 @@ import Leaderboard from '../components/competition/Leaderboard';
 import PortfolioView from '../components/portfolio/PortfolioView';
 import StockSearchView from '../components/portfolio/StockSearchView';
 
-const DetailedPortfolioView = React.lazy(() => import('../DetailedPortfolioView'));
+const DetailedPortfolioView = React.lazy(() => import('../components/portfolio/DetailedPortfolioView'));
 
 const CompetitionDetailPage = ({ user, competitionId, onBack, onDeleteCompetition }) => {
     const [competition, setCompetition] = useState(null);
