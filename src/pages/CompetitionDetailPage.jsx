@@ -28,6 +28,10 @@ const CompetitionDetailPage = () => {
 
             if (docSnap.exists()) {
                 const data = { id: docSnap.id, ...docSnap.data() };
+                
+                // Log the fetched data to the console for debugging
+                console.log("Fetched competition data:", data);
+
                 // Basic validation to ensure the fetched data is usable
                 if (data.name && Array.isArray(data.participants)) {
                     setCompetition(data);
