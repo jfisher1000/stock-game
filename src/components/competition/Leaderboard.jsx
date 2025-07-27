@@ -1,44 +1,66 @@
-import React, { useState, useEffect } from 'react';
-import { db } from '../../api/firebase';
-import { collection, query, onSnapshot } from 'firebase/firestore';
-import { formatCurrency } from '../../utils/formatters';
+import React from 'react';
+import { TrophyIcon } from '../common/Icons.jsx';
+import { formatCurrency } from '../../utils/formatters.js';
 
-const Leaderboard = ({ competitionId, userId }) => {
-    const [participants, setParticipants] = useState([]);
+const Leaderboard = ({ participants }) => {
 
-    useEffect(() => {
-        const q = query(collection(db, 'competitions', competitionId, 'participants'));
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const fetchedParticipants = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            fetchedParticipants.sort((a, b) => b.portfolioValue - a.portfolioValue);
-            setParticipants(fetchedParticipants);
+    // --- Defensive Programming ---
+    // Ensure participants is a valid array before proceeding.
+    if (!Array.isArray(participants)) {
+        console.error("Leaderboard received non-array participants:", participants);
+        return (
+            <div className="glass-card p-6 rounded-lg text-center">
+                <p className="text-gray-400">Leaderboard data is currently unavailable.</p>
+            </div>
+        );
+    }
+
+    const calculatePortfolioValue = (participant) => {
+        // Safely calculate value, providing defaults for missing data.
+        const cash = participant?.portfolio?.cash || 0;
+        const holdingsValue = Array.isArray(participant?.portfolio?.holdings)
+            ? participant.portfolio.holdings.reduce((acc, h) => acc + (h.value || 0), 0)
+            : 0;
+        return cash + holdingsValue;
+    };
+
+    // Filter out any invalid participants and then sort.
+    const sortedParticipants = participants
+        .filter(p => p && p.userId && p.portfolio)
+        .sort((a, b) => {
+            const valueA = calculatePortfolioValue(a);
+            const valueB = calculatePortfolioValue(b);
+            return valueB - valueA;
         });
-        return () => unsubscribe();
-    }, [competitionId]);
+
+    if (sortedParticipants.length === 0) {
+        return (
+            <div className="glass-card p-6 rounded-lg text-center">
+                <p className="text-gray-400">No participants in the leaderboard yet.</p>
+            </div>
+        );
+    }
 
     return (
-        <div className="mt-6">
-            <h3 className="text-2xl font-semibold mb-4">Leaderboard</h3>
-            <div className="glass-card rounded-lg overflow-hidden">
-                <table className="w-full text-left">
-                    <thead className="bg-white/10">
-                        <tr>
-                            <th className="p-4">Rank</th>
-                            <th className="p-4">Player</th>
-                            <th className="p-4 text-right">Portfolio Value</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {participants.map((p, index) => (
-                            <tr key={p.id} className={`border-b border-white/10 last:border-b-0 ${p.id === userId ? 'bg-primary/20' : ''}`}>
-                                <td className="p-4">{index + 1}</td>
-                                <td className="p-4">{p.username}</td>
-                                <td className="p-4 text-right">{formatCurrency(p.portfolioValue)}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
+        <div className="glass-card p-6 rounded-lg">
+            <ul>
+                {sortedParticipants.map((p, index) => {
+                    const totalValue = calculatePortfolioValue(p);
+                    return (
+                        <li key={p.userId} className="flex items-center justify-between py-3 border-b border-gray-700 last:border-b-0">
+                            <div className="flex items-center">
+                                <span className="text-lg font-bold text-gray-400 mr-4">{index + 1}</span>
+                                <div>
+                                    {/* Provide fallback for username */}
+                                    <p className="font-semibold text-white">{p.username || 'Anonymous User'}</p>
+                                    <p className="text-sm text-gray-400">{formatCurrency(totalValue)}</p>
+                                </div>
+                            </div>
+                            {index < 3 && <TrophyIcon className={`w-6 h-6 ${index === 0 ? 'text-yellow-400' : index === 1 ? 'text-gray-400' : 'text-yellow-600'}`} />}
+                        </li>
+                    )
+                })}
+            </ul>
         </div>
     );
 };
