@@ -1,14 +1,13 @@
-import React from "react";
-import ReactDOM from "react-dom/client";
-import { BrowserRouter } from "react-router-dom";
-import "./index.css";
-import App from "./App.jsx"; // Updated to import App.jsx
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+import './index.css';
+import ErrorBoundary from '@/components/common/ErrorBoundary'; // Import the new component
 
-const root = ReactDOM.createRoot(document.getElementById("root"));
-root.render(
+ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <BrowserRouter>
+    <ErrorBoundary>
       <App />
-    </BrowserRouter>
+    </ErrorBoundary>
   </React.StrictMode>
 );
