@@ -1,44 +1,59 @@
-// This file centralizes all environment variables for the application.
-// It reads from Vite's `import.meta.env` object and provides a single,
-// validated source of truth for configuration.
+// src/config/environment.js
+
+/**
+ * @fileoverview Centralized configuration for environment variables.
+ *
+ * This module imports all environment variables from Vite's `import.meta.env`,
+ * validates that the required variables are present, and exports them in a
+ * structured configuration object. This approach provides a single source of
+ * truth for configuration and helps prevent runtime errors due to missing
+ * .env file setups.
+ */
+
+// Extract raw environment variables from Vite's import.meta.env object.
+const VITE_ENV = import.meta.env;
+
+// --- Firebase Configuration ---
+// Assemble the Firebase configuration object from environment variables.
+const firebaseConfig = {
+  apiKey: VITE_ENV.VITE_FIREBASE_API_KEY,
+  authDomain: VITE_ENV.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: VITE_ENV.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: VITE_ENV.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: VITE_ENV.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: VITE_ENV.VITE_FIREBASE_APP_ID,
+};
+
+// --- Alpha Vantage Configuration ---
+// Assemble the Alpha Vantage configuration object.
+const alphaVantageConfig = {
+  apiKey: VITE_ENV.VITE_ALPHA_VANTAGE_API_KEY,
+};
 
 // --- Validation ---
-// A list of all environment variables required by the application.
-const requiredEnvVars = [
-  'VITE_FIREBASE_API_KEY',
-  'VITE_FIREBASE_AUTH_DOMAIN',
-  'VITE_FIREBASE_PROJECT_ID',
-  'VITE_FIREBASE_STORAGE_BUCKET',
-  'VITE_FIREBASE_MESSAGING_SENDER_ID',
-  'VITE_FIREBASE_APP_ID',
-  'VITE_ALPHA_VANTAGE_API_KEY',
-];
+// Create a map of all required variables and their values for validation.
+const requiredVariables = {
+  ...firebaseConfig,
+  ...alphaVantageConfig,
+};
 
-// This loop checks if all required variables are present in the environment.
-// If a variable is missing, it throws an error to stop the application
-// immediately, preventing runtime errors from misconfiguration.
-for (const varName of requiredEnvVars) {
-  if (import.meta.env[varName] === undefined) {
-    throw new Error(`FATAL: Missing required environment variable "${varName}". Please check your .env file.`);
+// Iterate over the map of required variables.
+for (const [key, value] of Object.entries(requiredVariables)) {
+  // If a value is undefined, null, or an empty string, it's considered missing.
+  if (!value) {
+    // Throw a descriptive error to halt execution and inform the developer.
+    // This prevents the app from running with an incomplete or invalid configuration.
+    throw new Error(`FATAL ERROR: Missing required environment variable: VITE_${key.toUpperCase()}`);
   }
 }
 
-// --- Exported Configuration ---
-// The validated variables are exported in a structured object for clean,
-// predictable access throughout the application.
-export const env = {
-  firebase: {
-    apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-    appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  },
-  alphaVantage: {
-    apiKey: import.meta.env.VITE_ALPHA_VANTAGE_API_KEY,
-  },
-  // We can also export Vite's mode flags for conditional logic in the app.
-  isDevelopment: import.meta.env.DEV,
-  isProduction: import.meta.env.PROD,
-};
+// --- Export ---
+// Export a single, immutable configuration object.
+const env = Object.freeze({
+  firebase: firebaseConfig,
+  alphaVantage: alphaVantageConfig,
+  isDevelopment: VITE_ENV.DEV,
+  isProduction: VITE_ENV.PROD,
+});
+
+export default env;
