@@ -1,46 +1,41 @@
-// In Vite, environment variables must be prefixed with VITE_
-const API_KEY = import.meta.env.VITE_ALPHA_VANTAGE_API_KEY;
+import { env } from '@/config/environment'; // Import the centralized config
+
+const API_KEY = env.alphaVantage.apiKey; // Use the key from the config
 const BASE_URL = 'https://www.alphavantage.co/query';
 
 /**
- * Searches for stocks using the Alpha Vantage API.
- * @param {string} keywords - The search term.
- * @returns {Promise<Array>} A list of matching stocks.
+ * Fetches the latest quote for a given stock symbol.
+ * @param {string} symbol - The stock symbol (e.g., 'IBM').
+ * @returns {Promise<object|null>} A promise that resolves to the quote data or null if an error occurs.
  */
-export const searchStocks = async (keywords) => {
-    // Add a check for the API key to prevent unnecessary API calls
-    if (!API_KEY) {
-        console.error("Alpha Vantage API key is missing. Please check your .env file.");
-        return [];
+export const getQuote = async (symbol) => {
+  const url = `${BASE_URL}?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${API_KEY}`;
+  try {
+    const response = await fetch(url);
+    const data = await response.json();
+    if (data['Global Quote']) {
+      return data['Global Quote'];
     }
-    try {
-        const response = await fetch(`${BASE_URL}?function=SYMBOL_SEARCH&keywords=${keywords}&apikey=${API_KEY}`);
-        const data = await response.json();
-        // The API returns 'bestMatches'
-        return data.bestMatches || [];
-    } catch (error) {
-        console.error('Error fetching stock data:', error);
-        return [];
-    }
+    return null;
+  } catch (error) {
+    console.error('Error fetching quote:', error);
+    return null;
+  }
 };
 
 /**
- * Fetches the latest price for a given stock symbol.
- * @param {string} symbol - The stock symbol.
- * @returns {Promise<Object|null>} The stock quote data or null if an error occurs.
+ * Searches for stocks based on keywords.
+ * @param {string} keywords - The search keywords (e.g., 'Microsoft').
+ * @returns {Promise<Array<object>>} A promise that resolves to an array of matching stocks.
  */
-export const getStockQuote = async (symbol) => {
-    if (!API_KEY) {
-        console.error("Alpha Vantage API key is missing.");
-        return null;
-    }
-    try {
-        const response = await fetch(`${BASE_URL}?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${API_KEY}`);
-        const data = await response.json();
-        // The quote data is in the 'Global Quote' property
-        return data['Global Quote'] || null;
-    } catch (error) {
-        console.error('Error fetching stock quote:', error);
-        return null;
-    }
+export const searchStocks = async (keywords) => {
+  const url = `${BASE_URL}?function=SYMBOL_SEARCH&keywords=${keywords}&apikey=${API_KEY}`;
+  try {
+    const response = await fetch(url);
+    const data = await response.json();
+    return data.bestMatches || [];
+  } catch (error) {
+    console.error('Error searching stocks:', error);
+    return [];
+  }
 };
