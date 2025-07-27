@@ -1,16 +1,15 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LogoutIcon } from '../common/Icons';
-
-// Placeholder icons - replace with your actual icon components
-const HomeIcon = () => <span className="w-6 h-6">🏠</span>;
-const ExploreIcon = () => <span className="w-6 h-6">🧭</span>;
-const AlertsIcon = () => <span className="w-6 h-6">🔔</span>;
-const AdminIcon = () => <span className="w-6 h-6">⚙️</span>;
+import { 
+    LogoutIcon,
+    HomeIcon,
+    ExploreIcon,
+    AlertsIcon,
+    AdminIcon 
+} from '../common/Icons.jsx';
 
 const SideBarItem = ({ name, icon, to }) => {
     const location = useLocation();
-    // Check if the current path matches the link's destination
     const isActive = location.pathname === to;
 
     return (
@@ -23,9 +22,9 @@ const SideBarItem = ({ name, icon, to }) => {
                         : 'text-gray-400 hover:bg-gray-700/50 hover:text-white'
                 }`}
             >
-                {icon}
+                {/* Render the actual icon component */}
+                {React.createElement(icon, { className: "w-6 h-6" })}
                 <span className="ml-4 font-semibold">{name}</span>
-                {/* Active indicator bar */}
                 {isActive && <div className="absolute left-0 top-0 h-full w-1 bg-white rounded-r-full"></div>}
             </Link>
         </li>
@@ -33,12 +32,11 @@ const SideBarItem = ({ name, icon, to }) => {
 };
 
 const SideBar = ({ onLogout }) => {
-    // Define the navigation menu items
     const menuItems = [
-        { name: 'Home', icon: <HomeIcon />, to: '/' },
-        { name: 'Explore', icon: <ExploreIcon />, to: '/explore' },
-        { name: 'Alerts', icon: <AlertsIcon />, to: '/alerts' },
-        { name: 'Admin', icon: <AdminIcon />, to: '/admin' },
+        { name: 'Home', icon: HomeIcon, to: '/' },
+        { name: 'Explore', icon: ExploreIcon, to: '/explore' },
+        { name: 'Alerts', icon: AlertsIcon, to: '/alerts' },
+        { name: 'Admin', icon: AdminIcon, to: '/admin' },
     ];
 
     return (
