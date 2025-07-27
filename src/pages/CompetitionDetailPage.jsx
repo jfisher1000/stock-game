@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import { doc, getDoc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { db, auth } from '../api/firebase';
 import { Button } from '../components/ui/button';
-import { UserAddIcon, TrashIcon } from '../components/common/Icons.jsx';
+import { UserAddIcon } from '../components/common/Icons.jsx';
 import Leaderboard from '../components/competition/Leaderboard.jsx';
 import PortfolioView from '../components/portfolio/PortfolioView.jsx';
 import StockSearchView from '../components/portfolio/StockSearchView.jsx';
@@ -28,28 +28,21 @@ const CompetitionDetailPage = () => {
 
             if (docSnap.exists()) {
                 const data = { id: docSnap.id, ...docSnap.data() };
-                console.log("Fetched competition data:", data);
-
-                // --- Resilient Data Handling ---
-                // This handles cases where 'participants' might be a JSON string from the DB
+                
                 let participantsArray = data.participants;
                 if (typeof participantsArray === 'string') {
                     try {
                         participantsArray = JSON.parse(participantsArray);
                     } catch (e) {
-                        console.error("Failed to parse participants string, defaulting to empty array.", e);
                         participantsArray = [];
                     }
                 }
                 
-                // Final check to ensure we have a valid array
                 if (!Array.isArray(participantsArray)) {
-                     console.warn("Participants field was not a valid array, defaulting to empty.");
                      participantsArray = [];
                 }
-                // --- End Resilient Data Handling ---
 
-                if (data.name) { // The main validation is now just for the name
+                if (data.name) {
                     const validCompetitionData = { ...data, participants: participantsArray };
                     setCompetition(validCompetitionData);
                     
@@ -89,7 +82,7 @@ const CompetitionDetailPage = () => {
                     }
                 })
             });
-            fetchCompetitionData(); // Re-fetch data to update UI
+            fetchCompetitionData();
         } catch (err) {
             console.error("Error joining competition: ", err);
             alert("Could not join the competition. Please try again.");
@@ -97,26 +90,26 @@ const CompetitionDetailPage = () => {
     };
 
     if (loading) {
-        return <div className="p-8 text-white text-center">Loading competition details...</div>;
+        return <div className="p-8 text-center">Loading competition details...</div>;
     }
 
     if (error) {
-        return <div className="p-8 text-white text-center text-red-500">Error: {error}</div>;
+        return <div className="p-8 text-center text-destructive">{error}</div>;
     }
 
     if (!competition) {
-        return <div className="p-8 text-white text-center">No competition data available.</div>;
+        return <div className="p-8 text-center">No competition data available.</div>;
     }
 
     const isParticipant = userPortfolio != null;
     const isOwner = competition.ownerId === currentUser?.uid;
 
     return (
-        <div className="p-8 text-white">
+        <div className="p-8">
             <header className="flex justify-between items-center mb-6">
                 <div>
                     <h1 className="text-4xl font-bold">{competition.name}</h1>
-                    <p className="text-gray-400 mt-2">{competition.description}</p>
+                    <p className="text-muted-foreground mt-2">{competition.description}</p>
                 </div>
                 <div className="flex items-center gap-4">
                     {!isParticipant && (
@@ -143,7 +136,7 @@ const CompetitionDetailPage = () => {
                     ) : (
                         <div className="glass-card p-8 text-center">
                             <h2 className="text-2xl font-bold mb-4">Join to Participate</h2>
-                            <p className="text-gray-400 mb-6">Join this competition to start trading and see your portfolio.</p>
+                            <p className="text-muted-foreground mb-6">Join this competition to start trading and see your portfolio.</p>
                             <Button onClick={handleJoinCompetition}>Join Now</Button>
                         </div>
                     )}
