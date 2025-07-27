@@ -1,5 +1,5 @@
 import React, { useState, useEffect, Suspense, useRef, useCallback } from 'react';
-import { auth, db } from './firebase';
+import { auth, db } from './api/firebase';
 import {
     onAuthStateChanged,
     signOut
@@ -22,7 +22,7 @@ import {
     collectionGroup,
     updateDoc
 } from 'firebase/firestore';
-import { searchSymbols, getQuote } from './api';
+import { searchSymbols, getQuote } from './api/alphaVantage';
 import { formatDate, formatCurrency, sanitizeSymbolForFirestore, getCompetitionStatus } from './utils/formatters';
 import {
     HomeIcon, ExploreIcon, AlertsIcon, ProfileIcon, LogoutIcon, AdminIcon, PlusIcon, TrashIcon,
@@ -1341,4 +1341,4 @@ function App() {
     );
 }
 
-export default App
+export default 
