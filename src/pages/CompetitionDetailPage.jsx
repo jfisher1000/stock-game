@@ -1,196 +1,145 @@
-import React, { useState, useEffect, Suspense } from 'react';
-import { db } from '../api/firebase';
-import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
-import { getCompetitionStatus, formatDate } from '../utils/formatters';
-import { UserAddIcon, TrashIcon } from '../components/common/Icons';
-import InviteModal from '../components/competition/InviteModal';
-import TradeModal from '../components/portfolio/TradeModal';
-import Leaderboard from '../components/competition/Leaderboard';
-import PortfolioView from '../components/portfolio/PortfolioView';
-import StockSearchView from '../components/portfolio/StockSearchView';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useParams } from 'react-router-dom';
+import { doc, getDoc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { db, auth } from '../api/firebase';
+import { Button } from '../components/ui/button';
+import { UserAddIcon, TrashIcon } from '../components/common/Icons.jsx';
+import Leaderboard from '../components/competition/Leaderboard.jsx';
+import PortfolioView from '../components/portfolio/PortfolioView.jsx';
+import StockSearchView from '../components/portfolio/StockSearchView.jsx';
+import InviteModal from '../components/competition/InviteModal.jsx';
 
-const DetailedPortfolioView = React.lazy(() => import('../components/portfolio/DetailedPortfolioView'));
-
-const CompetitionDetailPage = ({ user, competitionId, onBack, onDeleteCompetition }) => {
+const CompetitionDetailPage = () => {
+    const { id } = useParams();
     const [competition, setCompetition] = useState(null);
-    const [participantData, setParticipantData] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [tradeModalAsset, setTradeModalAsset] = useState(null);
-    const [isInviteModalOpen, setInviteModalOpen] = useState(false);
-    const [stockPrices, setStockPrices] = useState({});
-    const [showDetailedPortfolio, setShowDetailedPortfolio] = useState(false);
+    const [error, setError] = useState(null);
+    const [showInviteModal, setShowInviteModal] = useState(false);
+    const [userPortfolio, setUserPortfolio] = useState(null);
 
-    useEffect(() => {
-        const compRef = doc(db, 'competitions', competitionId);
-        const unsubscribeComp = onSnapshot(compRef, (doc) => {
-            if (doc.exists()) {
-                setCompetition({ id: doc.id, ...doc.data() });
-            } else {
-                onBack();
-            }
-            setLoading(false);
-        });
+    const currentUser = auth.currentUser;
 
-        const participantRef = doc(db, 'competitions', competitionId, 'participants', user.uid);
-        const unsubscribeParticipant = onSnapshot(participantRef, (doc) => {
-            if (doc.exists()) {
-                setParticipantData(doc.data());
-            }
-        });
+    const fetchCompetitionData = useCallback(async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const docRef = doc(db, 'competitions', id);
+            const docSnap = await getDoc(docRef);
 
-        return () => {
-            unsubscribeComp();
-            unsubscribeParticipant();
-        };
-    }, [competitionId, user.uid, onBack]);
-
-    useEffect(() => {
-        if (!participantData || !participantData.holdings) {
-            return;
-        }
-
-        const symbols = Object.values(participantData.holdings).map(h => h.originalSymbol).filter(Boolean);
-        if (symbols.length === 0) {
-            setStockPrices({});
-            return;
-        }
-
-        const unsubscribers = symbols.map(symbol => {
-            const docRef = doc(db, 'market_data', symbol);
-            return onSnapshot(docRef, (doc) => {
-                if (doc.exists()) {
-                    const data = doc.data();
-                    setStockPrices(prevPrices => ({
-                        ...prevPrices,
-                        [symbol]: { price: data.price, change: data.change }
-                    }));
+            if (docSnap.exists()) {
+                const data = { id: docSnap.id, ...docSnap.data() };
+                // Basic validation to ensure the fetched data is usable
+                if (data.name && Array.isArray(data.participants)) {
+                    setCompetition(data);
+                    // Find the current user's portfolio within the competition
+                    const portfolio = data.participants.find(p => p.userId === currentUser?.uid);
+                    setUserPortfolio(portfolio);
+                } else {
+                    throw new Error("Competition data is invalid or incomplete.");
                 }
-            });
-        });
-
-        return () => unsubscribers.forEach(unsub => unsub());
-
-    }, [participantData]);
-
+            } else {
+                throw new Error("Competition not found.");
+            }
+        } catch (err) {
+            console.error("Error fetching competition details:", err);
+            setError(err.message);
+        }
+        setLoading(false);
+    }, [id, currentUser?.uid]);
 
     useEffect(() => {
-        if (!participantData || !competition) return;
-
-        const status = getCompetitionStatus(competition.startDate, competition.endDate);
-        if (status.text !== 'Active') return;
-
-        const { cash, holdings, portfolioValue: currentPortfolioValue } = participantData;
-        
-        let totalStockValue = 0;
-        let allPricesAvailable = true;
-
-        Object.values(holdings).forEach(holding => {
-            const price = stockPrices[holding.originalSymbol]?.price;
-            if (price === undefined) {
-                allPricesAvailable = false;
-            } else {
-                totalStockValue += price * holding.shares;
-            }
-        });
-
-        if (!allPricesAvailable) return;
-
-        const newPortfolioValue = cash + totalStockValue;
-        
-        if (Math.abs(newPortfolioValue - currentPortfolioValue) > 0.01) {
-            const participantRef = doc(db, 'competitions', competitionId, 'participants', user.uid);
-            updateDoc(participantRef, { portfolioValue: newPortfolioValue })
-                .catch(err => console.error("Error updating portfolio value:", err));
+        fetchCompetitionData();
+    }, [fetchCompetitionData]);
+    
+    const handleJoinCompetition = async () => {
+        if (!currentUser) {
+            alert("You must be logged in to join a competition.");
+            return;
         }
-
-    }, [stockPrices, participantData, competition, competitionId, user.uid]);
-
-
-    if (loading) return <p className="p-8 text-white">Loading competition details...</p>;
-    if (!competition) return <p className="p-8 text-white">Competition not found.</p>;
-
-    const status = getCompetitionStatus(competition.startDate, competition.endDate);
-    const isTradingActive = status.text === 'Active';
-    const isOwner = user.uid === competition.ownerId;
-    const isAdmin = user.role === 'admin';
-    const canInvite = competition.isPublic || isOwner || isAdmin;
-    
-    const handleTradeFromDetailed = (symbol) => {
-        const holding = Object.values(participantData.holdings).find(h => h.originalSymbol === symbol);
-        const asset = { '1. symbol': symbol, '3. type': holding?.assetType || 'Equity' };
-        setTradeModalAsset(asset);
-        setShowDetailedPortfolio(false);
+        const userRef = doc(db, 'competitions', id);
+        try {
+            await updateDoc(userRef, {
+                participants: arrayUnion({
+                    userId: currentUser.uid,
+                    username: currentUser.displayName || 'Anonymous',
+                    portfolio: {
+                        cash: competition.startingBalance || 100000,
+                        holdings: []
+                    }
+                })
+            });
+            fetchCompetitionData(); // Re-fetch data to update UI
+        } catch (err) {
+            console.error("Error joining competition: ", err);
+            alert("Could not join the competition. Please try again.");
+        }
     };
-    
-    if (showDetailedPortfolio) {
-        return (
-            <Suspense fallback={<div className="p-8 text-white">Loading Portfolio...</div>}>
-                <DetailedPortfolioView 
-                    participantData={participantData}
-                    stockPrices={stockPrices}
-                    onTrade={handleTradeFromDetailed}
-                    onBack={() => setShowDetailedPortfolio(false)}
-                />
-            </Suspense>
-        );
+
+    if (loading) {
+        return <div className="p-8 text-white text-center">Loading competition details...</div>;
     }
+
+    if (error) {
+        return <div className="p-8 text-white text-center text-red-500">Error: {error}</div>;
+    }
+
+    // This check is important to prevent rendering with null data
+    if (!competition) {
+        return <div className="p-8 text-white text-center">No competition data available.</div>;
+    }
+
+    const isParticipant = userPortfolio != null;
+    const isOwner = competition.ownerId === currentUser?.uid;
 
     return (
         <div className="p-8 text-white">
-            {tradeModalAsset && isTradingActive && (
-                <TradeModal 
-                    user={user}
-                    competitionId={competitionId} 
-                    asset={tradeModalAsset} 
-                    stockPrices={stockPrices}
-                    onClose={() => setTradeModalAsset(null)} 
-                />
-            )}
-            {isInviteModalOpen && (
-                <InviteModal 
-                    user={user}
-                    competition={competition}
-                    onClose={() => setInviteModalOpen(false)}
-                />
-            )}
-            <div className="flex justify-between items-start mb-6">
-                 <button onClick={onBack} className="text-primary hover:underline">{'< Back to Home'}</button>
-                 <div className="flex items-center gap-4">
-                    {canInvite && (
-                        <button onClick={() => setInviteModalOpen(true)} className="bg-primary/80 hover:bg-primary text-white font-bold py-2 px-4 rounded-md flex items-center gap-2">
-                            <UserAddIcon /> Invite Players
-                        </button>
+            <header className="flex justify-between items-center mb-6">
+                <div>
+                    <h1 className="text-4xl font-bold">{competition.name}</h1>
+                    <p className="text-gray-400 mt-2">{competition.description}</p>
+                </div>
+                <div className="flex items-center gap-4">
+                    {!isParticipant && (
+                        <Button onClick={handleJoinCompetition}>Join Competition</Button>
                     )}
-                    {(isAdmin || isOwner) && (
-                         <button onClick={() => onDeleteCompetition(competition)} className="bg-danger/80 hover:bg-danger text-white font-bold py-2 px-4 rounded-md flex items-center gap-2">
-                            <TrashIcon className="w-5 h-5" /> Delete
-                        </button>
+                    {isOwner && (
+                         <Button variant="outline" onClick={() => setShowInviteModal(true)}>
+                            <UserAddIcon className="mr-2 h-4 w-4" /> Invite
+                        </Button>
                     )}
-                 </div>
-            </div>
-            
-            <div className="flex items-center gap-4">
-                <h1 className="text-4xl font-bold">{competition.name}</h1>
-                <span className={`text-lg font-bold px-3 py-1 rounded-full ${status.color}`}>{status.text}</span>
-            </div>
-            <p className="text-gray-400 mt-2">
-                {formatDate(competition.startDate)} to {formatDate(competition.endDate)} • Owner: {competition.ownerName}
-            </p>
-            
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-6">
+                </div>
+            </header>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <div className="lg:col-span-2">
-                    <Leaderboard competitionId={competitionId} userId={user.uid} />
+                    {isParticipant ? (
+                        <>
+                           <h2 className="text-2xl font-bold mb-4">My Portfolio</h2>
+                           <PortfolioView participantData={userPortfolio} />
+                           <div className="mt-8">
+                               <StockSearchView competitionId={id} participantId={currentUser.uid} />
+                           </div>
+                        </>
+                    ) : (
+                        <div className="glass-card p-8 text-center">
+                            <h2 className="text-2xl font-bold mb-4">Join to Participate</h2>
+                            <p className="text-gray-400 mb-6">Join this competition to start trading and see your portfolio.</p>
+                            <Button onClick={handleJoinCompetition}>Join Now</Button>
+                        </div>
+                    )}
                 </div>
-                <div className="lg:col-span-1">
-                    <PortfolioView 
-                        participantData={participantData} 
-                        onTrade={setTradeModalAsset} 
-                        stockPrices={stockPrices}
-                        onViewDetails={() => setShowDetailedPortfolio(true)}
-                    />
-                    <StockSearchView onSelectStock={setTradeModalAsset} isTradingActive={isTradingActive} />
+                <div>
+                    <h2 className="text-2xl font-bold mb-4">Leaderboard</h2>
+                    <Leaderboard participants={competition.participants} />
                 </div>
             </div>
+
+            {showInviteModal && (
+                <InviteModal 
+                    competitionId={id} 
+                    onClose={() => setShowInviteModal(false)} 
+                />
+            )}
         </div>
     );
 };
