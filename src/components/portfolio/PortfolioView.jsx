@@ -1,9 +1,15 @@
 import React, { useState } from 'react';
+<<<<<<< Updated upstream
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { formatCurrency, formatPercentage } from '@/utils/formatters';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import TradeModal from './TradeModal';
+=======
+import { formatCurrency } from '@/utils/formatters.js';
+import DetailedPortfolioView from './DetailedPortfolioView.jsx';
+import { Button } from '@/ui/button.jsx';
+>>>>>>> Stashed changes
 
 const PortfolioView = ({ competitionId }) => {
   const { portfolio, loading, error } = usePortfolio(competitionId);

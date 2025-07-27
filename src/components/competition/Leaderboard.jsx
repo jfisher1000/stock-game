@@ -1,6 +1,6 @@
 import React from 'react';
-import { TrophyIcon } from '../common/Icons.jsx';
-import { formatCurrency } from '../../utils/formatters.js';
+import { TrophyIcon } from '@/common/Icons.jsx';
+import { formatCurrency } from '@/utils/formatters.js';
 
 const Leaderboard = ({ participants }) => {
 

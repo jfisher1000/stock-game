@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, getDocs, query, where } from 'firebase/firestore';
-import { db } from '../api/firebase';
-import CompetitionCard from '../components/competition/CompetitionCard.jsx';
+import { db } from '@/api/firebase';
+import CompetitionCard from '@/components/competition/CompetitionCard.jsx';
 
 const ExplorePage = () => {
     const [competitions, setCompetitions] = useState([]);

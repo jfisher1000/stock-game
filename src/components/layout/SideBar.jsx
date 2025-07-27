@@ -1,9 +1,20 @@
 import React from 'react';
+<<<<<<< Updated upstream
 import { NavLink, useNavigate } from 'react-router-dom';
 import { auth } from '@/api/firebase';
 import { Button } from '@/components/ui/button';
 import { Home, Compass, Bell, User, LogOut, ShieldCheck } from 'lucide-react';
 import { useAuthState } from 'react-firebase-hooks/auth';
+=======
+import { Link, useLocation } from 'react-router-dom';
+import { 
+    LogoutIcon,
+    HomeIcon,
+    ExploreIcon,
+    AlertsIcon,
+    AdminIcon 
+} from '@/common/Icons.jsx';
+>>>>>>> Stashed changes
 
 const SideBar = () => {
   const [user] = useAuthState(auth);

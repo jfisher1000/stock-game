@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CalendarIcon, UsersIcon } from '../common/Icons.jsx';
+import { CalendarIcon, UsersIcon } from '@/common/Icons.jsx';
 
 const CompetitionCard = ({ competition }) => {
     const navigate = useNavigate();

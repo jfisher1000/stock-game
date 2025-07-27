@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { collection, getDocs } from 'firebase/firestore';
-import { db } from '../api/firebase';
+import { db } from '@/api/firebase';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 // Corrected the import path for the icons
-import { UsersIcon, DollarSignIcon, ActivityIcon } from '../components/common/Icons.jsx';
+import { UsersIcon, DollarSignIcon, ActivityIcon } from '@/components/common/Icons.jsx';
 
 const AdminPage = () => {
     const [users, setUsers] = useState([]);

@@ -1,5 +1,5 @@
 import React from 'react';
-import { formatCurrency, formatPercentage } from '../../utils/formatters.js';
+import { formatCurrency, formatPercentage } from '@/utils/formatters.js';
 import {
     Table,
     TableBody,

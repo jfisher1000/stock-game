@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
-import { db, auth } from '../api/firebase';
-import { Button } from '../components/ui/button';
-import { UserAddIcon } from '../components/common/Icons.jsx';
-import Leaderboard from '../components/competition/Leaderboard.jsx';
-import PortfolioView from '../components/portfolio/PortfolioView.jsx';
-import StockSearchView from '../components/portfolio/StockSearchView.jsx';
-import InviteModal from '../components/competition/InviteModal.jsx';
+import { db, auth } from '@/api/firebase';
+import { Button } from '@/components/ui/button';
+import { UserAddIcon } from '@/components/common/Icons.jsx';
+import Leaderboard from '@/components/competition/Leaderboard.jsx';
+import PortfolioView from '@/components/portfolio/PortfolioView.jsx';
+import StockSearchView from '@/components/portfolio/StockSearchView.jsx';
+import InviteModal from '@/components/competition/InviteModal.jsx';
 
 const CompetitionDetailPage = () => {
     const { id } = useParams();

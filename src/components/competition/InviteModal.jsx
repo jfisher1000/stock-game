@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { db } from '../../api/firebase';
+import { db } from '@/api/firebase';
 import { collection, doc, getDocs, query, serverTimestamp, setDoc, where } from 'firebase/firestore';
-import { SearchIcon } from '../common/Icons';
+import { SearchIcon } from '@/common/Icons';
 
 const InviteModal = ({ user, competition, onClose }) => {
     const [searchTerm, setSearchTerm] = useState('');

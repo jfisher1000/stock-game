@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { searchStocks } from '../../api/alphaVantage';
-import { SearchIcon } from '../common/Icons.jsx';
+import { searchStocks } from '@/api/alphaVantage';
+import { SearchIcon } from '@/common/Icons.jsx';
 import TradeModal from './TradeModal.jsx';
-import { Button } from '../ui/button.jsx';
+import { Button } from '@/ui/button.jsx';
 
 const StockSearchView = ({ competitionId, participantId }) => {
     const [searchTerm, setSearchTerm] = useState('');
