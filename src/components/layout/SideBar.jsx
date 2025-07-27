@@ -11,6 +11,9 @@ import {
 const SideBarItem = ({ name, icon, to }) => {
     const location = useLocation();
     const isActive = location.pathname === to;
+    // The icon prop is a component, so we assign it to a capitalized variable
+    // to be able to render it as a JSX tag.
+    const Icon = icon;
 
     return (
         <li>
@@ -22,8 +25,8 @@ const SideBarItem = ({ name, icon, to }) => {
                         : 'text-gray-400 hover:bg-gray-700/50 hover:text-white'
                 }`}
             >
-                {/* Render the actual icon component */}
-                {React.createElement(icon, { className: "w-6 h-6" })}
+                {/* This is the corrected, standard way to render the icon component */}
+                <Icon className="w-6 h-6" />
                 <span className="ml-4 font-semibold">{name}</span>
                 {isActive && <div className="absolute left-0 top-0 h-full w-1 bg-white rounded-r-full"></div>}
             </Link>
