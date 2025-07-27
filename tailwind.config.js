@@ -1,55 +1,79 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
+  darkMode: ["class"], // Enabling dark mode via a class
   content: [
-    "./src/**/*.{js,jsx,ts,tsx}",
+    './pages/**/*.{js,ts,jsx,tsx}',
+    './components/**/*.{js,ts,jsx,tsx}',
+    './app/**/*.{js,ts,jsx,tsx}',
+    './src/**/*.{js,ts,jsx,tsx}',
   ],
   theme: {
+    container: {
+      center: true,
+      padding: "2rem",
+      screens: {
+        "2xl": "1400px",
+      },
+    },
     extend: {
-      // 1. COLOR PALETTE
-      // Semantic color names adapted for the existing dark theme.
-      // This centralizes the design system for easy app-wide updates.
       colors: {
-        // Core Interactive Colors
-        'primary': '#0052FF',      // Main interactive color for buttons, links. Was already defined.
-        'primary-focus': '#0041c2', // A slightly darker shade for hover/focus states.
-        'secondary': '#a0aec0',    // Light gray for secondary text or less important elements.
-        
-        // Surface & Background Colors (based on index.css)
-        'background': '#111827',   // Core background color from the body's linear gradient.
-        'surface': 'rgba(255, 255, 255, 0.1)', // Background for glass-card elements.
-        
-        // Text Colors
-        'text-primary': '#FFFFFF',    // Default text color for the dark theme.
-        'text-secondary': '#CBD5E0', // Lighter gray for secondary or hint text.
-
-        // Border Color (based on glass-card)
-        'border': 'rgba(255, 255, 255, 0.18)', // Default border color for cards and inputs.
-
-        // Status Colors
-        'success': '#28A745',      // For success messages or icons. Was already defined.
-        'danger': '#DC3545',       // For error messages or icons. Was already defined.
-        'warning': '#FFC107',      // For warning messages or icons.
+        border: "hsl(var(--border))",
+        input: "hsl(var(--input))",
+        ring: "hsl(var(--ring))",
+        background: "hsl(var(--background))",
+        foreground: "hsl(var(--foreground))",
+        primary: {
+          DEFAULT: "hsl(var(--primary))",
+          foreground: "hsl(var(--primary-foreground))",
+        },
+        secondary: {
+          DEFAULT: "hsl(var(--secondary))",
+          foreground: "hsl(var(--secondary-foreground))",
+        },
+        destructive: {
+          DEFAULT: "hsl(var(--destructive))",
+          foreground: "hsl(var(--destructive-foreground))",
+        },
+        muted: {
+          DEFAULT: "hsl(var(--muted))",
+          foreground: "hsl(var(--muted-foreground))",
+        },
+        accent: {
+          DEFAULT: "hsl(var(--accent))",
+          foreground: "hsl(var(--accent-foreground))",
+        },
+        popover: {
+          DEFAULT: "hsl(var(--popover))",
+          foreground: "hsl(var(--popover-foreground))",
+        },
+        card: {
+          DEFAULT: "hsl(var(--card))",
+          foreground: "hsl(var(--card-foreground))",
+        },
       },
-
-      // 2. TYPOGRAPHY
-      fontFamily: {
-        sans: ['Inter', 'sans-serif'], // Sets 'Inter' as the default sans-serif font.
-      },
-
-      // 3. BORDER RADIUS
-      // Standardized border-radius values for a consistent look on elements.
       borderRadius: {
-        'ui-sm': '0.2rem',  // Small radius for inputs, small buttons.
-        'ui': '0.5rem',     // Default radius for cards, modals. Matches current look.
-        'ui-lg': '0.8rem',  // Large radius for containers.
+        lg: "var(--radius)",
+        md: "calc(var(--radius) - 2px)",
+        sm: "calc(var(--radius) - 4px)",
       },
-
-      // 4. BOX SHADOWS
-      // Standardized shadow values for controlling elevation and depth.
-      boxShadow: {
-        'ui': '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+       fontFamily: {
+        sans: ['var(--font-sans)', 'sans-serif'],
+      },
+      keyframes: {
+        "accordion-down": {
+          from: { height: "0" },
+          to: { height: "var(--radix-accordion-content-height)" },
+        },
+        "accordion-up": {
+          from: { height: "var(--radix-accordion-content-height)" },
+          to: { height: "0" },
+        },
+      },
+      animation: {
+        "accordion-down": "accordion-down 0.2s ease-out",
+        "accordion-up": "accordion-up 0.2s ease-out",
       },
     },
   },
-  plugins: [],
+  plugins: [require("tailwindcss-animate")], // The plugin is now included.
 }
