@@ -1,70 +1,51 @@
-import React from 'react';
-import { formatCurrency } from '../../utils/formatters';
+import React, { useState } from 'react';
+import { formatCurrency } from '../../utils/formatters.js';
+import DetailedPortfolioView from './DetailedPortfolioView.jsx';
+import { Button } from '../ui/button.jsx';
 
-const PortfolioView = ({ participantData, onTrade, stockPrices, onViewDetails }) => {
-    if (!participantData) return <div className="glass-card p-6 rounded-lg mt-6"><p>Loading portfolio...</p></div>;
+const PortfolioView = ({ participantData }) => {
+    const [showDetailedView, setShowDetailedView] = useState(false);
 
-    const { cash, portfolioValue } = participantData;
-    const holdings = participantData.holdings || {};
+    if (!participantData || !participantData.portfolio) {
+        return (
+            <div className="glass-card p-6 rounded-lg text-center">
+                <p className="text-muted-foreground">No portfolio data available.</p>
+            </div>
+        );
+    }
 
-    const totalStockValue = Object.values(holdings).reduce((acc, data) => {
-        const currentValue = stockPrices[data.originalSymbol]?.price || data.avgCost;
-        return acc + (currentValue * data.shares);
-    }, 0);
+    const { portfolio } = participantData;
+    const holdingsValue = Array.isArray(portfolio.holdings)
+        ? portfolio.holdings.reduce((acc, holding) => acc + (holding.value || 0), 0)
+        : 0;
+    const totalValue = (portfolio.cash || 0) + holdingsValue;
 
     return (
-        <div className="glass-card p-6 rounded-lg mt-6">
-            <div className="flex justify-between items-center">
-                <h3 className="text-xl font-semibold mb-2">My Portfolio</h3>
-                <button onClick={onViewDetails} className="text-sm text-primary hover:underline">
-                    View Details &rarr;
-                </button>
+        <div className="glass-card p-6 rounded-lg">
+            <div className="flex justify-between items-start">
+                <div>
+                    <h3 className="text-lg font-semibold text-muted-foreground">Portfolio Value</h3>
+                    <p className="text-3xl font-bold text-foreground">{formatCurrency(totalValue)}</p>
+                </div>
+                <Button variant="outline" onClick={() => setShowDetailedView(!showDetailedView)}>
+                    {showDetailedView ? 'Hide Details' : 'Show Details'}
+                </Button>
             </div>
-            <div className="mb-4">
-                <span className="text-3xl font-bold">{formatCurrency(portfolioValue)}</span>
-                <p className="text-gray-400 text-sm">Cash: {formatCurrency(cash)}</p>
+            <div className="mt-4">
+                <div className="flex justify-between text-muted-foreground">
+                    <span>Cash</span>
+                    <span>{formatCurrency(portfolio.cash || 0)}</span>
+                </div>
+                <div className="flex justify-between text-muted-foreground">
+                    <span>Stocks</span>
+                    <span>{formatCurrency(holdingsValue)}</span>
+                </div>
             </div>
-            <table className="w-full text-left">
-                <thead className="border-b border-white/10">
-                    <tr>
-                        <th className="p-2">Symbol</th>
-                        <th className="p-2">Shares</th>
-                        <th className="p-2">Total Value</th>
-                        <th className="p-2">Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {Object.keys(holdings).length > 0 ? (
-                        Object.entries(holdings).map(([sanitizedSymbol, data]) => {
-                            const currentValue = stockPrices[data.originalSymbol]?.price || data.avgCost;
-                            const totalValue = currentValue * data.shares;
-                            return (
-                                <tr key={sanitizedSymbol} className="border-b border-white/20 last:border-0">
-                                    <td className="p-2 font-bold">{data.originalSymbol || sanitizedSymbol}</td>
-                                    <td className="p-2">{data.shares}</td>
-                                    <td className="p-2">{formatCurrency(totalValue)}</td>
-                                    <td className="p-2">
-                                        <button onClick={() => onTrade({ '1. symbol': data.originalSymbol, '3. type': data.assetType })} className="bg-primary/50 text-xs py-1 px-2 rounded hover:bg-primary">Trade</button>
-                                    </td>
-                                </tr>
-                            )
-                        })
-                    ) : (
-                        <tr>
-                            <td colSpan="4" className="p-4 text-center text-gray-400">You don't own any stocks yet.</td>
-                        </tr>
-                    )}
-                </tbody>
-                {Object.keys(holdings).length > 0 && (
-                     <tfoot className="border-t-2 border-white/20 font-bold">
-                        <tr>
-                            <td className="p-2" colSpan="2">Total Stock Value</td>
-                            <td className="p-2">{formatCurrency(totalStockValue)}</td>
-                            <td className="p-2"></td>
-                        </tr>
-                    </tfoot>
-                )}
-            </table>
+            {showDetailedView && (
+                <div className="mt-6">
+                    <DetailedPortfolioView holdings={portfolio.holdings || []} />
+                </div>
+            )}
         </div>
     );
 };
