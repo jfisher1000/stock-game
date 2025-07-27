@@ -1,34 +1,29 @@
-import { initializeApp } from 'firebase/app';
-import { getFirestore, doc, setDoc, getDoc, collection, addDoc, serverTimestamp, runTransaction, query, where, getDocs, updateDoc, deleteDoc } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
-import { env } from '@/config/environment'; // Import the centralized config
+// src/api/firebase.js
 
-// Initialize Firebase using the validated config from our environment module.
+/**
+ * @fileoverview Firebase Service Initialization and Core Utilities.
+ *
+ * This module initializes the Firebase app with the configuration from the
+ * centralized environment module. It exports the initialized app instance,
+ * along with key Firebase service instances like Firestore and Auth.
+ * This ensures that all other parts of the application use a single,
+ * consistent Firebase setup.
+ */
+
+import { initializeApp } from 'firebase/app';
+import { getFirestore } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
+
+// Import the centralized environment configuration.
+import env from '../config/environment';
+
+// Initialize the Firebase app using the configuration from the 'env' object.
+// This is the single point of initialization for the entire application.
 const app = initializeApp(env.firebase);
 
-export const db = getFirestore(app);
-export const auth = getAuth(app);
+// Get instances of the core Firebase services.
+const db = getFirestore(app);
+const auth = getAuth(app);
 
-// --- User Management ---
-export const createUserProfileDocument = async (userAuth, additionalData) => {
-  // ... (rest of the function remains the same)
-};
-
-// --- Competition Management ---
-export const createCompetition = async (competitionData) => {
-  // ... (rest of the function remains the same)
-};
-
-// --- Trading ---
-export const executeTrade = async (tradeDetails) => {
-  // ... (rest of the function remains the same)
-};
-
-// --- Invitations ---
-export const sendInvitation = async (competitionId, invitedUserId) => {
-  // ... (rest of the function remains the same)
-};
-
-export const respondToInvitation = async (invitationId, accept) => {
-  // ... (rest of the function remains the same)
-};
+// Export the initialized services for use throughout the application.
+export { app, db, auth };
