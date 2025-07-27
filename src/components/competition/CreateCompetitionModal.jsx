@@ -1,108 +1,99 @@
 import React, { useState } from 'react';
-import { db } from '../../api/firebase';
-import { addDoc, collection, doc, serverTimestamp, setDoc, Timestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { db, auth } from '../../api/firebase';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
+import { Textarea } from '../ui/textarea';
 
-const CreateCompetitionModal = ({ user, onClose }) => {
+const CreateCompetitionModal = ({ onClose }) => {
     const [name, setName] = useState('');
-    const [startingCash, setStartingCash] = useState(100000);
+    const [description, setDescription] = useState('');
+    const [startingBalance, setStartingBalance] = useState(100000);
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
     const [isPublic, setIsPublic] = useState(true);
-    const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
-    const [durationNumber, setDurationNumber] = useState(2);
-    const [durationType, setDurationType] = useState('Weeks');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
 
-    const handleCreate = async (e) => {
+    const user = auth.currentUser;
+
+    const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!name.trim()) {
-            setError('Competition name is required.');
+        if (!name || !startDate || !endDate) {
+            setError('Please fill out all required fields.');
             return;
         }
         setLoading(true);
-
-        const start = new Date(startDate);
-        const end = new Date(start);
-        if (durationType === 'Days') {
-            end.setDate(start.getDate() + durationNumber);
-        } else if (durationType === 'Weeks') {
-            end.setDate(start.getDate() + durationNumber * 7);
-        } else if (durationType === 'Months') {
-            end.setMonth(start.getMonth() + durationNumber);
-        } else if (durationType === 'Years') {
-            end.setFullYear(start.getFullYear() + durationNumber);
-        }
-        
-        const startDateTimestamp = Timestamp.fromDate(start);
-        const endDateTimestamp = Timestamp.fromDate(end);
-
-
+        setError('');
         try {
-            const competitionRef = await addDoc(collection(db, 'competitions'), {
+            await addDoc(collection(db, 'competitions'), {
                 name,
-                startingCash,
+                description,
+                startingBalance,
+                startDate: new Date(startDate),
+                endDate: new Date(endDate),
                 isPublic,
                 ownerId: user.uid,
-                ownerName: user.username,
-                createdAt: serverTimestamp(),
-                startDate: startDateTimestamp,
-                endDate: endDateTimestamp,
-                participantIds: [user.uid]
+                participantIds: [user.uid],
+                participants: [{
+                    userId: user.uid,
+                    username: user.displayName || 'Anonymous',
+                    portfolio: { cash: startingBalance, holdings: [] }
+                }],
+                createdAt: serverTimestamp()
             });
-
-            const participantRef = doc(db, 'competitions', competitionRef.id, 'participants', user.uid);
-            await setDoc(participantRef, {
-                username: user.username,
-                portfolioValue: startingCash,
-                cash: startingCash,
-                joinedAt: serverTimestamp(),
-                holdings: {}
-            });
-
             onClose();
         } catch (err) {
+            console.error("Error creating competition: ", err);
             setError('Failed to create competition. Please try again.');
-            console.error(err);
         }
         setLoading(false);
     };
 
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="glass-card p-8 rounded-lg w-full max-w-md text-white">
-                <h2 className="text-2xl font-bold mb-6">Create New Competition</h2>
-                <form onSubmit={handleCreate}>
-                    <div className="mb-4">
-                        <label className="block mb-2">Competition Name</label>
-                        <input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full bg-black/20 p-3 rounded-md border border-white/20" required/>
-                    </div>
-                    <div className="mb-4">
-                        <label className="block mb-2">Starting Cash</label>
-                        <input type="number" value={startingCash} onChange={e => setStartingCash(Number(e.target.value))} className="w-full bg-black/20 p-3 rounded-md border border-white/20" />
-                    </div>
-                     <div className="mb-4">
-                        <label className="block mb-2">Start Date</label>
-                        <input type="date" value={startDate} min={new Date().toISOString().split('T')[0]} onChange={e => setStartDate(e.target.value)} className="w-full bg-black/20 p-3 rounded-md border border-white/20" />
-                    </div>
-                    <div className="mb-4">
-                        <label className="block mb-2">Duration</label>
-                        <div className="flex gap-2">
-                            <input type="number" value={durationNumber} min="1" onChange={e => setDurationNumber(Number(e.target.value))} className="w-1/3 bg-black/20 p-3 rounded-md border border-white/20" />
-                            <select value={durationType} onChange={e => setDurationType(e.target.value)} className="w-2/3 bg-black/20 p-3 rounded-md border border-white/20">
-                                <option>Days</option>
-                                <option>Weeks</option>
-                                <option>Months</option>
-                                <option>Years</option>
-                            </select>
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+            <div className="bg-card rounded-lg shadow-xl p-8 w-full max-w-lg">
+                <h2 className="text-2xl font-bold mb-2">Create a New Competition</h2>
+                <p className="text-muted-foreground mb-6">Fill in the details below to start a new competition.</p>
+                
+                <form onSubmit={handleSubmit}>
+                    <div className="grid gap-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="name">Competition Name</Label>
+                            <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g., Q3 Trading Challenge" />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="description">Description</Label>
+                            <Textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Describe the rules and goals of your competition." />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="start-date">Start Date</Label>
+                                <Input id="start-date" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="end-date">End Date</Label>
+                                <Input id="end-date" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+                            </div>
+                        </div>
+                         <div className="space-y-2">
+                            <Label htmlFor="starting-balance">Starting Balance</Label>
+                            <Input id="starting-balance" type="number" value={startingBalance} onChange={(e) => setStartingBalance(Number(e.target.value))} />
+                        </div>
+                        <div className="flex items-center space-x-2">
+                            <input type="checkbox" id="isPublic" checked={isPublic} onChange={(e) => setIsPublic(e.target.checked)} />
+                            <Label htmlFor="isPublic">Make this competition public</Label>
                         </div>
                     </div>
-                    <div className="mb-6 flex items-center">
-                        <input type="checkbox" id="isPublic" checked={isPublic} onChange={e => setIsPublic(e.target.checked)} className="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded" />
-                        <label htmlFor="isPublic" className="ml-2">Publicly visible</label>
-                    </div>
-                    {error && <p className="text-danger mb-4">{error}</p>}
-                    <div className="flex justify-end gap-4">
-                        <button type="button" onClick={onClose} className="py-2 px-4 rounded-md hover:bg-white/10">Cancel</button>
-                        <button type="submit" disabled={loading} className="py-2 px-4 rounded-md bg-primary hover:opacity-90 disabled:opacity-50">{loading ? 'Creating...' : 'Create'}</button>
+                    
+                    {error && <p className="text-destructive mt-4">{error}</p>}
+
+                    <div className="flex justify-end gap-2 mt-6">
+                        <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
+                        <Button type="submit" disabled={loading}>
+                            {loading ? 'Creating...' : 'Create Competition'}
+                        </Button>
                     </div>
                 </form>
             </div>
