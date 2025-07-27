@@ -1,16 +1,18 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { Routes, Route, useNavigate } from 'react-router-dom';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { auth } from './api/firebase';
-import SideBar from './components/layout/SideBar';
-import AuthPage from './pages/AuthPage';
+import { auth } from './api/firebase.js'; // .js extension is correct here
 
-// Lazy load pages for better performance
-const HomePage = lazy(() => import('./pages/HomePage'));
-const ExplorePage = lazy(() => import('./pages/ExplorePage'));
-const CompetitionDetailPage = lazy(() => import('./pages/CompetitionDetailPage'));
-const AlertsPage = lazy(() => import('./pages/AlertsPage'));
-const AdminPage = lazy(() => import('./pages/AdminPage'));
+// Import components with the new .jsx extension
+import SideBar from './components/layout/SideBar.jsx';
+import AuthPage from './pages/AuthPage.jsx';
+
+// Lazy load pages with the new .jsx extension
+const HomePage = lazy(() => import('./pages/HomePage.jsx'));
+const ExplorePage = lazy(() => import('./pages/ExplorePage.jsx'));
+const CompetitionDetailPage = lazy(() => import('./pages/CompetitionDetailPage.jsx'));
+const AlertsPage = lazy(() => import('./pages/AlertsPage.jsx'));
+const AdminPage = lazy(() => import('./pages/AdminPage.jsx'));
 
 function App() {
   const [user, setUser] = useState(null);
@@ -18,29 +20,26 @@ function App() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Listen for authentication state changes
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setLoading(false);
     });
-    return () => unsubscribe(); // Cleanup subscription on unmount
+    return () => unsubscribe();
   }, []);
 
   const handleLogout = async () => {
     try {
       await signOut(auth);
-      navigate('/auth'); // Redirect to auth page after logout
+      navigate('/auth');
     } catch (error) {
       console.error("Error signing out: ", error);
     }
   };
 
-  // Show a loading screen while checking for user authentication
   if (loading) {
     return <div className="h-screen bg-background text-white flex items-center justify-center">Loading...</div>;
   }
 
-  // If the user is not authenticated, only render the authentication page
   if (!user) {
     return (
       <Suspense fallback={<div className="h-screen bg-background text-white flex items-center justify-center">Loading...</div>}>
@@ -51,7 +50,6 @@ function App() {
     );
   }
 
-  // If the user is authenticated, render the main application layout
   return (
     <div className="flex h-screen bg-background">
       <SideBar onLogout={handleLogout} />
@@ -63,7 +61,6 @@ function App() {
             <Route path="/competition/:id" element={<CompetitionDetailPage />} />
             <Route path="/alerts" element={<AlertsPage />} />
             <Route path="/admin" element={<AdminPage />} />
-            {/* Redirect any unknown path to the home page */}
             <Route path="*" element={<HomePage />} />
           </Routes>
         </Suspense>
