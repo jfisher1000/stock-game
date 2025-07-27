@@ -28,24 +28,41 @@ const CompetitionDetailPage = () => {
 
             if (docSnap.exists()) {
                 const data = { id: docSnap.id, ...docSnap.data() };
-                
-                // Log the fetched data to the console for debugging
                 console.log("Fetched competition data:", data);
 
-                // Basic validation to ensure the fetched data is usable
-                if (data.name && Array.isArray(data.participants)) {
-                    setCompetition(data);
-                    // Find the current user's portfolio within the competition
-                    const portfolio = data.participants.find(p => p.userId === currentUser?.uid);
+                // --- Resilient Data Handling ---
+                // This handles cases where 'participants' might be a JSON string from the DB
+                let participantsArray = data.participants;
+                if (typeof participantsArray === 'string') {
+                    try {
+                        participantsArray = JSON.parse(participantsArray);
+                    } catch (e) {
+                        console.error("Failed to parse participants string, defaulting to empty array.", e);
+                        participantsArray = [];
+                    }
+                }
+                
+                // Final check to ensure we have a valid array
+                if (!Array.isArray(participantsArray)) {
+                     console.warn("Participants field was not a valid array, defaulting to empty.");
+                     participantsArray = [];
+                }
+                // --- End Resilient Data Handling ---
+
+                if (data.name) { // The main validation is now just for the name
+                    const validCompetitionData = { ...data, participants: participantsArray };
+                    setCompetition(validCompetitionData);
+                    
+                    const portfolio = validCompetitionData.participants.find(p => p.userId === currentUser?.uid);
                     setUserPortfolio(portfolio);
                 } else {
-                    throw new Error("Competition data is invalid or incomplete.");
+                    throw new Error("Competition data is invalid or incomplete (missing name).");
                 }
             } else {
                 throw new Error("Competition not found.");
             }
         } catch (err) {
-            console.error("Error fetching competition details:", err);
+            console.error("Error processing competition details:", err);
             setError(err.message);
         }
         setLoading(false);
@@ -87,7 +104,6 @@ const CompetitionDetailPage = () => {
         return <div className="p-8 text-white text-center text-red-500">Error: {error}</div>;
     }
 
-    // This check is important to prevent rendering with null data
     if (!competition) {
         return <div className="p-8 text-white text-center">No competition data available.</div>;
     }
