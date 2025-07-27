@@ -1,45 +1,37 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
-import { CalendarIcon, UsersIcon } from '@/common/Icons.jsx';
+import { Link } from 'react-router-dom';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Calendar, Users } from 'lucide-react';
 
 const CompetitionCard = ({ competition }) => {
-    const navigate = useNavigate();
+  const { id, name, description, startDate, endDate, participantCount } = competition;
 
-    if (!competition) {
-        return null; 
-    }
+  const formatDate = (dateString) => {
+    return new Date(dateString).toLocaleDateString();
+  };
 
-    const handleViewCompetition = () => {
-        if (competition.id) {
-            navigate(`/competition/${competition.id}`);
-        }
-    };
-
-    const startDate = competition.startDate?.seconds 
-        ? new Date(competition.startDate.seconds * 1000).toLocaleDateString() 
-        : 'N/A';
-    const endDate = competition.endDate?.seconds 
-        ? new Date(competition.endDate.seconds * 1000).toLocaleDateString() 
-        : 'N/A';
-
-    const participantCount = Array.isArray(competition.participants) 
-        ? competition.participants.length 
-        : 0;
-
-    return (
-        <div onClick={handleViewCompetition} className="glass-card p-6 rounded-lg flex flex-col hover:bg-accent transition-all duration-200 cursor-pointer">
-            <h3 className="text-2xl font-bold text-card-foreground mb-2">{competition.name || 'Untitled Competition'}</h3>
-            <p className="text-muted-foreground mb-4 flex-grow">{competition.description || 'No description available.'}</p>
-            <div className="flex items-center text-muted-foreground text-sm mb-4">
-                <CalendarIcon className="w-4 h-4 mr-2" />
-                <span>{startDate} - {endDate}</span>
-            </div>
-            <div className="flex items-center text-muted-foreground text-sm">
-                <UsersIcon className="w-4 h-4 mr-2" />
-                <span>{participantCount} participants</span>
-            </div>
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{name}</CardTitle>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center text-sm text-muted-foreground">
+          <Calendar className="mr-2 h-4 w-4" />
+          <span>{formatDate(startDate)} - {formatDate(endDate)}</span>
         </div>
-    );
+        <div className="flex items-center text-sm text-muted-foreground">
+          <Users className="mr-2 h-4 w-4" />
+          <span>{participantCount} participants</span>
+        </div>
+        <Link to={`/competition/${id}`}>
+          <Button className="w-full">View Competition</Button>
+        </Link>
+      </CardContent>
+    </Card>
+  );
 };
 
 export default CompetitionCard;
