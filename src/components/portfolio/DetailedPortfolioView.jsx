@@ -12,15 +12,17 @@ import {
 const DetailedPortfolioView = ({ holdings }) => {
 
     const getChangeColor = (change) => {
-        if (!change) return 'text-muted-foreground';
+        // Check if change is a valid number before determining color
+        if (typeof change !== 'number') return 'text-muted-foreground';
         return change > 0 ? 'text-green-500' : 'text-red-500';
     };
 
     const ChangeIndicator = ({ change }) => {
-        if (change === undefined || change === null) return <span className="text-muted-foreground">-</span>;
+        // Check if change is a valid number before rendering indicator
+        if (typeof change !== 'number') return <span className="text-muted-foreground ml-1">-</span>;
         const color = getChangeColor(change);
         const symbol = change > 0 ? '▲' : '▼';
-        return <span className={`${color}`}>{symbol}</span>;
+        return <span className={`${color} ml-1`}>{symbol}</span>;
     };
 
     if (!Array.isArray(holdings) || holdings.length === 0) {
@@ -40,17 +42,26 @@ const DetailedPortfolioView = ({ holdings }) => {
                     </TableRow>
                 </TableHeader>
                 <TableBody>
-                    {holdings.map((holding) => (
-                        <TableRow key={holding.symbol}>
-                            <TableCell className="font-medium">{holding.symbol}</TableCell>
-                            <TableCell>{holding.shares}</TableCell>
-                            <TableCell className="text-right">{formatCurrency(holding.value)}</TableCell>
-                            <TableCell className={`text-right font-medium ${getChangeColor(holding.dayChange)}`}>
-                                {holding.dayChange ? `${formatCurrency(holding.dayChange)} (${formatPercentage(holding.dayChangePercent)})` : '-'}
-                                <ChangeIndicator change={holding.dayChange} />
-                            </TableCell>
-                        </TableRow>
-                    ))}
+                    {holdings.map((holding) => {
+                        // --- Defensive Data Checks ---
+                        // Safely format values, providing a fallback if the data is not a number.
+                        const marketValue = typeof holding.value === 'number' ? formatCurrency(holding.value) : '-';
+                        const dayChange = typeof holding.dayChange === 'number' ? formatCurrency(holding.dayChange) : null;
+                        const dayChangePercent = typeof holding.dayChangePercent === 'number' ? formatPercentage(holding.dayChangePercent) : null;
+                        const dayChangeDisplay = dayChange && dayChangePercent ? `${dayChange} (${dayChangePercent})` : '-';
+
+                        return (
+                            <TableRow key={holding.symbol}>
+                                <TableCell className="font-medium">{holding.symbol || 'N/A'}</TableCell>
+                                <TableCell>{typeof holding.shares === 'number' ? holding.shares : '-'}</TableCell>
+                                <TableCell className="text-right">{marketValue}</TableCell>
+                                <TableCell className={`text-right font-medium ${getChangeColor(holding.dayChange)}`}>
+                                    {dayChangeDisplay}
+                                    <ChangeIndicator change={holding.dayChange} />
+                                </TableCell>
+                            </TableRow>
+                        );
+                    })}
                 </TableBody>
             </Table>
         </div>
