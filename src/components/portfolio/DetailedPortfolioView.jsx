@@ -12,13 +12,11 @@ import {
 const DetailedPortfolioView = ({ holdings }) => {
 
     const getChangeColor = (change) => {
-        // Check if change is a valid number before determining color
         if (typeof change !== 'number') return 'text-muted-foreground';
         return change > 0 ? 'text-green-500' : 'text-red-500';
     };
 
     const ChangeIndicator = ({ change }) => {
-        // Check if change is a valid number before rendering indicator
         if (typeof change !== 'number') return <span className="text-muted-foreground ml-1">-</span>;
         const color = getChangeColor(change);
         const symbol = change > 0 ? '▲' : '▼';
@@ -28,6 +26,10 @@ const DetailedPortfolioView = ({ holdings }) => {
     if (!Array.isArray(holdings) || holdings.length === 0) {
         return <p className="text-center text-muted-foreground mt-4">No stocks in this portfolio yet.</p>;
     }
+
+    // Filter out any holdings that are missing essential data (like a symbol) before rendering.
+    // This is the most robust way to prevent crashes from bad data.
+    const validHoldings = holdings.filter(holding => holding && holding.symbol);
 
     return (
         <div className="mt-6">
@@ -42,9 +44,7 @@ const DetailedPortfolioView = ({ holdings }) => {
                     </TableRow>
                 </TableHeader>
                 <TableBody>
-                    {holdings.map((holding) => {
-                        // --- Defensive Data Checks ---
-                        // Safely format values, providing a fallback if the data is not a number.
+                    {validHoldings.map((holding) => {
                         const marketValue = typeof holding.value === 'number' ? formatCurrency(holding.value) : '-';
                         const dayChange = typeof holding.dayChange === 'number' ? formatCurrency(holding.dayChange) : null;
                         const dayChangePercent = typeof holding.dayChangePercent === 'number' ? formatPercentage(holding.dayChangePercent) : null;
@@ -52,7 +52,7 @@ const DetailedPortfolioView = ({ holdings }) => {
 
                         return (
                             <TableRow key={holding.symbol}>
-                                <TableCell className="font-medium">{holding.symbol || 'N/A'}</TableCell>
+                                <TableCell className="font-medium">{holding.symbol}</TableCell>
                                 <TableCell>{typeof holding.shares === 'number' ? holding.shares : '-'}</TableCell>
                                 <TableCell className="text-right">{marketValue}</TableCell>
                                 <TableCell className={`text-right font-medium ${getChangeColor(holding.dayChange)}`}>
