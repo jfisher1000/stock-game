@@ -1,70 +1,59 @@
 import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { 
-    LogoutIcon,
-    HomeIcon,
-    ExploreIcon,
-    AlertsIcon,
-    AdminIcon 
-} from '../common/Icons.jsx';
+import { NavLink, useNavigate } from 'react-router-dom';
+import { auth } from '@/api/firebase';
+import { Button } from '@/components/ui/button';
+import { Home, Compass, Bell, User, LogOut, ShieldCheck } from 'lucide-react';
+import { useAuthState } from 'react-firebase-hooks/auth';
 
-const SideBarItem = ({ name, icon, to }) => {
-    const location = useLocation();
-    const isActive = location.pathname === to;
-    // The icon prop is a component, so we assign it to a capitalized variable
-    // to be able to render it as a JSX tag.
-    const Icon = icon;
+const SideBar = () => {
+  const [user] = useAuthState(auth);
+  const navigate = useNavigate();
 
-    return (
-        <li>
-            <Link 
-                to={to} 
-                className={`relative flex items-center p-4 my-2 cursor-pointer rounded-lg transition-all duration-200 ${
-                    isActive 
-                        ? 'bg-primary text-white shadow-lg' 
-                        : 'text-gray-400 hover:bg-gray-700/50 hover:text-white'
-                }`}
-            >
-                {/* This is the corrected, standard way to render the icon component */}
-                <Icon className="w-6 h-6" />
-                <span className="ml-4 font-semibold">{name}</span>
-                {isActive && <div className="absolute left-0 top-0 h-full w-1 bg-white rounded-r-full"></div>}
-            </Link>
-        </li>
-    );
-};
+  const handleSignOut = () => {
+    auth.signOut();
+    navigate('/auth');
+  };
 
-const SideBar = ({ onLogout }) => {
-    const menuItems = [
-        { name: 'Home', icon: HomeIcon, to: '/' },
-        { name: 'Explore', icon: ExploreIcon, to: '/explore' },
-        { name: 'Alerts', icon: AlertsIcon, to: '/alerts' },
-        { name: 'Admin', icon: AdminIcon, to: '/admin' },
-    ];
+  const navItems = [
+    { to: '/', icon: <Home className="h-5 w-5" />, text: 'Home' },
+    { to: '/explore', icon: <Compass className="h-5 w-5" />, text: 'Explore' },
+    { to: '/alerts', icon: <Bell className="h-5 w-5" />, text: 'Alerts' },
+    { to: '/admin', icon: <ShieldCheck className="h-5 w-5" />, text: 'Admin' },
+  ];
 
-    return (
-        <aside className="w-64 bg-gray-800 text-white p-6 flex flex-col justify-between">
-            <div>
-                <div className="text-2xl font-bold mb-10 text-center">
-                    Stock<span className="text-primary">Game</span>
-                </div>
-                <nav>
-                    <ul>
-                        {menuItems.map(item => (
-                            <SideBarItem key={item.name} {...item} />
-                        ))}
-                    </ul>
-                </nav>
-            </div>
-            <button 
-                onClick={onLogout} 
-                className="flex items-center w-full p-4 text-gray-400 hover:bg-red-700/50 hover:text-white rounded-lg transition-all duration-200"
-            >
-                <LogoutIcon />
-                <span className="ml-4 font-semibold">Logout</span>
-            </button>
-        </aside>
-    );
+  return (
+    <aside className="w-64 bg-surface text-text-primary flex flex-col p-4 border-r border-gray-200">
+      <div className="text-2xl font-bold mb-8 text-primary">StockGame</div>
+      <nav className="flex-1 space-y-2">
+        {navItems.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            className={({ isActive }) =>
+              `flex items-center space-x-3 p-2 rounded-md transition-colors ${
+                isActive
+                  ? 'bg-primary text-white'
+                  : 'hover:bg-gray-100'
+              }`
+            }
+          >
+            {item.icon}
+            <span>{item.text}</span>
+          </NavLink>
+        ))}
+      </nav>
+      <div className="mt-auto">
+        <div className="flex items-center space-x-3 p-2 mb-4">
+          <User className="h-5 w-5" />
+          <span>{user?.email}</span>
+        </div>
+        <Button variant="outline" className="w-full" onClick={handleSignOut}>
+          <LogOut className="mr-2 h-4 w-4" />
+          Sign Out
+        </Button>
+      </div>
+    </aside>
+  );
 };
 
 export default SideBar;
