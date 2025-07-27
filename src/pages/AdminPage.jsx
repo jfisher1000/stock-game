@@ -2,16 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../api/firebase';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
+// Temporarily removed Tabs and Table imports to isolate the issue
 import { UsersIcon, DollarSignIcon, ActivityIcon } from '../common/Icons.jsx';
 
 const AdminPage = () => {
@@ -84,68 +75,17 @@ const AdminPage = () => {
                 </Card>
             </div>
 
-            <Tabs defaultValue="users">
-                <TabsList>
-                    <TabsTrigger value="users">Users</TabsTrigger>
-                    <TabsTrigger value="competitions">Competitions</TabsTrigger>
-                </TabsList>
-                <TabsContent value="users">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>User Management</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Email</TableHead>
-                                        <TableHead>Joined On</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {users.map(user => (
-                                        <TableRow key={user.id}>
-                                            <TableCell>{user.email}</TableCell>
-                                            <TableCell>{user.createdAt?.toDate().toLocaleDateString() || 'N/A'}</TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        </CardContent>
-                    </Card>
-                </TabsContent>
-                <TabsContent value="competitions">
-                     <Card>
-                        <CardHeader>
-                            <CardTitle>Competition Management</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                             <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Name</TableHead>
-                                        <TableHead>Owner ID</TableHead>
-                                        <TableHead>Status</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {competitions.map(comp => (
-                                        <TableRow key={comp.id}>
-                                            <TableCell>{comp.name}</TableCell>
-                                            <TableCell className="font-mono text-xs">{comp.ownerId}</TableCell>
-                                            <TableCell>
-                                                <Badge variant={comp.isPublic ? 'default' : 'secondary'}>
-                                                    {comp.isPublic ? 'Public' : 'Private'}
-                                                </Badge>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        </CardContent>
-                    </Card>
-                </TabsContent>
-            </Tabs>
+            {/* The Tabs and Table components have been temporarily removed for debugging. */}
+            <div className="mt-6">
+                <Card>
+                    <CardHeader>
+                        <CardTitle>User and Competition data will be displayed here.</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <p className="text-muted-foreground">More details coming soon.</p>
+                    </CardContent>
+                </Card>
+            </div>
         </div>
     );
 };
