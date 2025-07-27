@@ -12,7 +12,8 @@ import {
     TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { UsersIcon, DollarSignIcon, ActivityIcon } from '../common/Icons.jsx';
+// Corrected the import path for the icons
+import { UsersIcon, DollarSignIcon, ActivityIcon } from '../components/common/Icons.jsx';
 
 const AdminPage = () => {
     const [users, setUsers] = useState([]);
