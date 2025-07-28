@@ -1,4 +1,4 @@
-// src/api/firebaseApi.js
+// src/api/firebaseAPI.js
 
 /**
  * @fileoverview Dedicated API layer for all Firebase Firestore interactions.
@@ -65,6 +65,28 @@ export const createCompetition = async (competitionData) => {
     throw error;
   }
 };
+
+/**
+ * Sends an invitation to a user to join a competition.
+ * @param {string} competitionId - The ID of the competition.
+ * @param {string} invitedUserId - The ID of the user being invited.
+ * @returns {Promise<void>}
+ */
+export const sendInvitation = async (competitionId, invitedUserId) => {
+    try {
+        const invitationRef = doc(db, 'competitions', competitionId, 'invitations', invitedUserId);
+        await setDoc(invitationRef, {
+            invitedAt: serverTimestamp(),
+            status: 'pending',
+            inviterId: auth.currentUser.uid,
+        });
+        console.log(`Invitation sent to ${invitedUserId} for competition ${competitionId}`);
+    } catch (error) {
+        console.error('Error sending invitation:', error);
+        throw error;
+    }
+};
+
 
 // --- Trading and Portfolio Management ---
 
