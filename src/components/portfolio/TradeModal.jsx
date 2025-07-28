@@ -21,8 +21,8 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useToast } from '@/hooks/use-toast'; // Corrected import path
-import { executeTrade } from '@/api/firebaseApi';
+import { useToast } from '../../hooks/use-toast'; // Corrected import path
+import { executeTrade } from '../../api/firebaseApi'; // Corrected import path
 
 const TradeModal = ({ isOpen, onOpenChange, stock, competitionId, userId }) => {
   const [tradeType, setTradeType] = useState('buy');
