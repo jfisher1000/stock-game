@@ -1,154 +1,201 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs } from 'firebase/firestore';
-import { db } from '@/api/firebase';
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-// Corrected the import path for the icons
-import { UsersIcon, DollarSignIcon, ActivityIcon } from '@/components/common/Icons.jsx';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { getAllUsers, getAllCompetitions, getApiLogs } from '@/api/firebaseAPI';
+import { format } from 'date-fns';
+
+// --- Sub-components for each tab ---
+
+const AnalyticsTab = () => {
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const fetchLogs = async () => {
+      try {
+        setLoading(true);
+        const apiLogs = await getApiLogs();
+        setLogs(apiLogs);
+        setError(null);
+      } catch (err) {
+        setError('Failed to fetch API logs. You may not have admin privileges.');
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchLogs();
+  }, []);
+
+  if (loading) return <div>Loading Analytics...</div>;
+  if (error) return <div className="text-red-500">{error}</div>;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>API Usage Logs</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Timestamp</TableHead>
+              <TableHead>User ID</TableHead>
+              <TableHead>API Function</TableHead>
+              <TableHead>Symbol</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {logs.map((log) => (
+              <TableRow key={log.id}>
+                <TableCell>{log.timestamp ? format(log.timestamp.toDate(), 'yyyy-MM-dd HH:mm:ss') : 'N/A'}</TableCell>
+                <TableCell className="font-mono text-xs">{log.userId}</TableCell>
+                <TableCell>{log.functionName}</TableCell>
+                <TableCell>{log.params?.symbol || 'N/A'}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  );
+};
+
+const UserManagementTab = () => {
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        setLoading(true);
+        const allUsers = await getAllUsers();
+        setUsers(allUsers);
+        setError(null);
+      } catch (err) {
+        setError('Failed to fetch users. You may not have admin privileges.');
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchUsers();
+  }, []);
+
+  if (loading) return <div>Loading Users...</div>;
+  if (error) return <div className="text-red-500">{error}</div>;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>User Management</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>User ID</TableHead>
+              <TableHead>Email</TableHead>
+              <TableHead>Role</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {users.map((user) => (
+              <TableRow key={user.id}>
+                <TableCell className="font-mono text-xs">{user.id}</TableCell>
+                <TableCell>{user.email}</TableCell>
+                <TableCell>{user.role || 'user'}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  );
+};
+
+const CompetitionManagementTab = () => {
+  const [competitions, setCompetitions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const fetchCompetitions = async () => {
+      try {
+        setLoading(true);
+        const allCompetitions = await getAllCompetitions();
+        setCompetitions(allCompetitions);
+        setError(null);
+      } catch (err) {
+        setError('Failed to fetch competitions.');
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchCompetitions();
+  }, []);
+
+  if (loading) return <div>Loading Competitions...</div>;
+  if (error) return <div className="text-red-500">{error}</div>;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Competition Management</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Competition Name</TableHead>
+              <TableHead>Owner ID</TableHead>
+              <TableHead>Start Date</TableHead>
+              <TableHead>End Date</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {competitions.map((comp) => (
+              <TableRow key={comp.id}>
+                <TableCell>{comp.name}</TableCell>
+                <TableCell className="font-mono text-xs">{comp.ownerId}</TableCell>
+                <TableCell>{comp.startDate ? format(comp.startDate.toDate(), 'yyyy-MM-dd') : 'N/A'}</TableCell>
+                <TableCell>{comp.endDate ? format(comp.endDate.toDate(), 'yyyy-MM-dd') : 'N/A'}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  );
+};
+
 
 const AdminPage = () => {
-    const [users, setUsers] = useState([]);
-    const [competitions, setCompetitions] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
-
-    useEffect(() => {
-        const fetchData = async () => {
-            setLoading(true);
-            setError(null);
-            try {
-                const usersSnapshot = await getDocs(collection(db, 'users'));
-                setUsers(usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-
-                const competitionsSnapshot = await getDocs(collection(db, 'competitions'));
-                setCompetitions(competitionsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-            } catch (err) {
-                console.error("Error fetching admin data:", err);
-                setError("Failed to load admin dashboard data.");
-            }
-            setLoading(false);
-        };
-        fetchData();
-    }, []);
-
-    if (loading) {
-        return <div className="p-8 text-center">Loading admin dashboard...</div>;
-    }
-
-    if (error) {
-        return <div className="p-8 text-center text-destructive">{error}</div>;
-    }
-
-    const totalUsers = users.length;
-    const totalCompetitions = competitions.length;
-    const publicCompetitions = competitions.filter(c => c.isPublic).length;
-
-    return (
-        <div className="p-8">
-            <h1 className="text-4xl font-bold mb-6">Admin Dashboard</h1>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mb-6">
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Total Users</CardTitle>
-                        <UsersIcon className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">{totalUsers}</div>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Total Competitions</CardTitle>
-                        <ActivityIcon className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">{totalCompetitions}</div>
-                    </CardContent>
-                </Card>
-                 <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Public Competitions</CardTitle>
-                        <DollarSignIcon className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">{publicCompetitions}</div>
-                    </CardContent>
-                </Card>
-            </div>
-
-            <Tabs defaultValue="users">
-                <TabsList>
-                    <TabsTrigger value="users">Users</TabsTrigger>
-                    <TabsTrigger value="competitions">Competitions</TabsTrigger>
-                </TabsList>
-                <TabsContent value="users">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>User Management</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Email</TableHead>
-                                        <TableHead>Joined On</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {users.map(user => (
-                                        <TableRow key={user.id}>
-                                            <TableCell>{user.email}</TableCell>
-                                            <TableCell>{user.createdAt?.toDate().toLocaleDateString() || 'N/A'}</TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        </CardContent>
-                    </Card>
-                </TabsContent>
-                <TabsContent value="competitions">
-                     <Card>
-                        <CardHeader>
-                            <CardTitle>Competition Management</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                             <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Name</TableHead>
-                                        <TableHead>Owner ID</TableHead>
-                                        <TableHead>Status</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {competitions.map(comp => (
-                                        <TableRow key={comp.id}>
-                                            <TableCell>{comp.name}</TableCell>
-                                            <TableCell className="font-mono text-xs">{comp.ownerId}</TableCell>
-                                            <TableCell>
-                                                <Badge variant={comp.isPublic ? 'default' : 'secondary'}>
-                                                    {comp.isPublic ? 'Public' : 'Private'}
-                                                </Badge>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        </CardContent>
-                    </Card>
-                </TabsContent>
-            </Tabs>
-        </div>
-    );
+  return (
+    <div className="container mx-auto p-4">
+      <h1 className="text-3xl font-bold mb-4">Admin Dashboard</h1>
+      <Tabs defaultValue="analytics" className="w-full">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="analytics">Analytics</TabsTrigger>
+          <TabsTrigger value="userManagement">User Management</TabsTrigger>
+          <TabsTrigger value="competitionManagement">Competition Management</TabsTrigger>
+        </TabsList>
+        <TabsContent value="analytics">
+          <AnalyticsTab />
+        </TabsContent>
+        <TabsContent value="userManagement">
+          <UserManagementTab />
+        </TabsContent>
+        <TabsContent value="competitionManagement">
+          <CompetitionManagementTab />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
 };
 
 export default AdminPage;
