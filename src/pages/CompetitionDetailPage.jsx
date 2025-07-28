@@ -14,6 +14,7 @@ import { Icons } from '@/components/common/Icons';
 
 /**
  * A header component to display the main details of the competition.
+ * It now includes checks to ensure data exists before rendering.
  * @param {object} props - The component props.
  * @param {object} props.competition - The competition data object.
  */
@@ -42,7 +43,8 @@ const CompetitionHeader = ({ competition }) => (
         </div>
         <div>
           <p className="font-semibold text-text-primary">End Date</p>
-          <p>{formatDate(competition.endDate)}</p>
+          {/* Defensively check if endDate exists before formatting */}
+          <p>{competition.endDate ? formatDate(competition.endDate) : 'N/A'}</p>
         </div>
         <div>
           <p className="font-semibold text-text-primary">Owner</p>
@@ -50,7 +52,8 @@ const CompetitionHeader = ({ competition }) => (
         </div>
         <div>
           <p className="font-semibold text-text-primary">Created</p>
-          <p>{formatDate(competition.createdAt)}</p>
+          {/* Defensively check if createdAt exists before formatting */}
+          <p>{competition.createdAt ? formatDate(competition.createdAt) : 'N/A'}</p>
         </div>
       </div>
     </CardContent>
@@ -94,8 +97,11 @@ const CompetitionDetailPage = () => {
     );
   }
 
-  // If there's no competition, render nothing.
+  // **CRITICAL FIX**: Only render the main content if loading is complete AND competition is not null.
+  // This prevents runtime errors from trying to access properties of a null object.
   if (!competition) {
+    // This can happen briefly or if the ID is invalid.
+    // The error view will handle the "not found" case from the hook.
     return null;
   }
 
