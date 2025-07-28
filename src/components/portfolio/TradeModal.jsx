@@ -21,15 +21,16 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useToast } from '@/hooks/use-toast'; // Reverted to use the '@/' alias
-import { executeTrade } from '@/api/firebaseApi'; // Reverted to use the '@/' alias
+// CORRECTED IMPORT PATH: Points to the actual location of the use-toast hook.
+import { useToast } from '@/components/ui/use-toast'; 
+import { executeTrade } from '@/api/firebaseApi';
 
 const TradeModal = ({ isOpen, onOpenChange, stock, competitionId, userId }) => {
   const [tradeType, setTradeType] = useState('buy');
   const [quantity, setQuantity] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
-  const { toast } = useToast(); // Correctly get the toast function from the hook
+  const { toast } = useToast();
 
   // Reset state when the modal is closed or opened
   React.useEffect(() => {
@@ -60,7 +61,7 @@ const TradeModal = ({ isOpen, onOpenChange, stock, competitionId, userId }) => {
         symbol: stock.symbol,
         tradeType,
         quantity: numQuantity,
-        price: stock.price, // Assuming stock object contains the current price
+        price: stock.price,
       });
 
       toast({
@@ -68,7 +69,7 @@ const TradeModal = ({ isOpen, onOpenChange, stock, competitionId, userId }) => {
         description: `Successfully ${tradeType === 'buy' ? 'bought' : 'sold'} ${numQuantity} shares of ${stock.symbol}.`,
         variant: 'default',
       });
-      onOpenChange(false); // Close modal on success
+      onOpenChange(false);
     } catch (err) {
       console.error('Trade execution failed:', err);
       setError(err.message || 'An unexpected error occurred during the trade.');
@@ -93,7 +94,6 @@ const TradeModal = ({ isOpen, onOpenChange, stock, competitionId, userId }) => {
           <DialogTitle>Trade {stock.symbol}</DialogTitle>
         </DialogHeader>
         
-        {/* Trade Type Tabs */}
         <div className="flex w-full">
           <button
             onClick={() => setTradeType('buy')}
