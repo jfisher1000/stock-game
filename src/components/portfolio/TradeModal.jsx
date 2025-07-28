@@ -21,15 +21,15 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useToast } from '@/hooks/useToast'; // Assuming a custom toast hook exists for notifications
-import { executeTrade } from '@/api/firebaseApi'; // Correctly import from the new API layer
+import { useToast } from '@/hooks/use-toast'; // Corrected import path
+import { executeTrade } from '@/api/firebaseApi';
 
 const TradeModal = ({ isOpen, onOpenChange, stock, competitionId, userId }) => {
   const [tradeType, setTradeType] = useState('buy');
   const [quantity, setQuantity] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
-  const { showToast } = useToast(); // Example usage of a toast notification system
+  const { toast } = useToast(); // Correctly get the toast function from the hook
 
   // Reset state when the modal is closed or opened
   React.useEffect(() => {
@@ -63,15 +63,20 @@ const TradeModal = ({ isOpen, onOpenChange, stock, competitionId, userId }) => {
         price: stock.price, // Assuming stock object contains the current price
       });
 
-      showToast({
+      toast({
         title: 'Success!',
         description: `Successfully ${tradeType === 'buy' ? 'bought' : 'sold'} ${numQuantity} shares of ${stock.symbol}.`,
-        status: 'success',
+        variant: 'default',
       });
       onOpenChange(false); // Close modal on success
     } catch (err) {
       console.error('Trade execution failed:', err);
       setError(err.message || 'An unexpected error occurred during the trade.');
+      toast({
+        title: 'Trade Failed',
+        description: err.message || 'An unexpected error occurred.',
+        variant: 'destructive',
+      });
     } finally {
       setIsLoading(false);
     }
