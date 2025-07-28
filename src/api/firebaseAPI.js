@@ -1,183 +1,314 @@
-// src/api/firebaseAPI.js
-
-/**
- * @fileoverview Dedicated API layer for all Firebase Firestore interactions.
- *
- * This module centralizes all the application's communication with the
- * Firestore database. By abstracting database logic away from components,
- * it makes the codebase cleaner, easier to test, and more maintainable.
- * Each function is designed to handle a specific database operation, such as
- * creating a competition, fetching user data, or executing a trade.
- */
-
 import {
+  getAuth,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+} from 'firebase/auth';
+import {
+  getFirestore,
   doc,
   setDoc,
   getDoc,
-  addDoc,
   collection,
-  serverTimestamp,
-  runTransaction,
+  query,
+  where,
+  getDocs,
   writeBatch,
+  serverTimestamp,
+  collectionGroup,
+  deleteDoc,
+  updateDoc,
+  arrayUnion,
+  arrayRemove
 } from 'firebase/firestore';
-import { db, auth } from './firebase'; // Assumes db and auth are initialized and exported from firebase.js
+import { app } from './firebase'; // Ensure you have this file exporting the initialized app
 
-// --- User and Profile Management ---
+export const auth = getAuth(app);
+export const db = getFirestore(app);
 
-/**
- * Fetches a user's profile from the 'users' collection.
- * @param {string} userId - The ID of the user to fetch.
- * @returns {Promise<object|null>} A promise that resolves to the user's data, or null if not found.
- */
-export const getUserProfile = async (userId) => {
-  try {
-    const userDocRef = doc(db, 'users', userId);
-    const userDocSnap = await getDoc(userDocRef);
-    if (userDocSnap.exists()) {
-      return userDocSnap.data();
-    } else {
-      console.warn(`No user profile found for userId: ${userId}`);
-      return null;
-    }
-  } catch (error) {
-    console.error('Error fetching user profile:', error);
-    throw error; // Re-throw to be handled by the caller
-  }
+// --- Auth Functions ---
+
+export const registerUser = async (email, password) => {
+  const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+  const user = userCredential.user;
+  // Create a user document in Firestore
+  await setDoc(doc(db, 'users', user.uid), {
+    email: user.email,
+    role: 'user', // Default role
+    createdAt: serverTimestamp(),
+  });
+  return user;
 };
 
-// --- Competition Management ---
+export const loginUser = (email, password) => {
+  return signInWithEmailAndPassword(auth, email, password);
+};
+
+export const logoutUser = () => {
+  return signOut(auth);
+};
+
+export const onAuthChange = (callback) => {
+  return onAuthStateChanged(auth, callback);
+};
+
+export const getUserProfile = async (userId) => {
+    if (!userId) return null;
+    const userDocRef = doc(db, 'users', userId);
+    const userDoc = await getDoc(userDocRef);
+    return userDoc.exists() ? { id: userDoc.id, ...userDoc.data() } : null;
+};
+
+
+// --- Competition Functions ---
+
+export const createCompetition = async (competitionData, ownerId) => {
+  const batch = writeBatch(db);
+
+  // 1. Create the main competition document
+  const competitionRef = doc(collection(db, 'competitions'));
+  batch.set(competitionRef, {
+    ...competitionData,
+    ownerId,
+    createdAt: serverTimestamp(),
+    participantIds: [ownerId] // Automatically add owner as a participant
+  });
+
+  // 2. Add the owner to the participants subcollection
+  const participantRef = doc(db, 'competitions', competitionRef.id, 'participants', ownerId);
+  batch.set(participantRef, {
+      userId: ownerId,
+      cash: competitionData.startingBalance,
+      portfolioValue: competitionData.startingBalance,
+      stocks: []
+  });
+
+  await batch.commit();
+  return competitionRef.id;
+};
+
+export const getCompetitionDetails = async (competitionId) => {
+    const competitionRef = doc(db, 'competitions', competitionId);
+    const competitionSnap = await getDoc(competitionRef);
+    if (competitionSnap.exists()) {
+        return { id: competitionSnap.id, ...competitionSnap.data() };
+    } else {
+        throw new Error("Competition not found");
+    }
+};
+
+export const getCompetitionParticipants = async (competitionId) => {
+    const participantsCol = collection(db, 'competitions', competitionId, 'participants');
+    const participantsSnap = await getDocs(participantsCol);
+    return participantsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+
+
+// --- Invitation Functions ---
+
+export const sendInvitation = async (competitionId, invitedEmail, ownerId) => {
+    // 1. Find the user by email
+    const usersRef = collection(db, 'users');
+    const q = query(usersRef, where("email", "==", invitedEmail));
+    const querySnapshot = await getDocs(q);
+
+    if (querySnapshot.empty) {
+        throw new Error("User with that email not found.");
+    }
+    const invitedUser = querySnapshot.docs[0].data();
+    const invitedUserId = querySnapshot.docs[0].id;
+
+    // 2. Create the invitation document
+    const invitationRef = doc(db, 'competitions', competitionId, 'invitations', invitedUserId);
+    await setDoc(invitationRef, {
+        competitionId,
+        invitedBy: ownerId,
+        status: 'pending',
+        createdAt: serverTimestamp()
+    });
+};
+
+export const getPendingInvitations = async (userId) => {
+    const invitationsQuery = query(
+        collectionGroup(db, 'invitations'),
+        where('status', '==', 'pending')
+    );
+
+    const snapshot = await getDocs(invitationsQuery);
+    const invitations = [];
+    snapshot.forEach(doc => {
+        // This is a workaround because collectionGroup queries don't let you filter by path.
+        // We check if the document ID (which is the userId) matches.
+        if (doc.id === userId) {
+            invitations.push({ id: doc.id, ...doc.data() });
+        }
+    });
+    return invitations;
+};
+
+export const acceptInvitation = async (invitation) => {
+    const { competitionId, id: userId } = invitation;
+
+    // Get competition details to get starting balance
+    const competition = await getCompetitionDetails(competitionId);
+
+    const batch = writeBatch(db);
+
+    // 1. Add user to the participants subcollection
+    const participantRef = doc(db, 'competitions', competitionId, 'participants', userId);
+    batch.set(participantRef, {
+        userId: userId,
+        cash: competition.startingBalance,
+        portfolioValue: competition.startingBalance,
+        stocks: []
+    });
+
+    // 2. Add userId to the participantIds array in the main competition doc
+    const competitionRef = doc(db, 'competitions', competitionId);
+    batch.update(competitionRef, {
+        participantIds: arrayUnion(userId)
+    });
+
+
+    // 3. Delete the invitation
+    const invitationRef = doc(db, 'competitions', competitionId, 'invitations', userId);
+    batch.delete(invitationRef);
+
+    await batch.commit();
+};
+
+export const declineInvitation = async (invitation) => {
+    const { competitionId, id: userId } = invitation;
+    const invitationRef = doc(db, 'competitions', competitionId, 'invitations', userId);
+    await deleteDoc(invitationRef);
+};
+
+
+// --- Portfolio and Trading Functions ---
+export const getPortfolio = async (competitionId, userId) => {
+    const participantRef = doc(db, 'competitions', competitionId, 'participants', userId);
+    const docSnap = await getDoc(participantRef);
+    if (docSnap.exists()) {
+        return docSnap.data();
+    }
+    return null;
+};
+
+export const executeTrade = async (competitionId, userId, tradeDetails) => {
+    const { symbol, quantity, price, type } = tradeDetails;
+    const cost = quantity * price;
+
+    const participantRef = doc(db, 'competitions', competitionId, 'participants', userId);
+
+    // This should be a transaction in a real app, but for now, we'll use a batch.
+    const batch = writeBatch(db);
+    const portfolio = await getPortfolio(competitionId, userId);
+
+    if (!portfolio) throw new Error("Portfolio not found");
+
+    const newCash = type === 'buy' ? portfolio.cash - cost : portfolio.cash + cost;
+    if (newCash < 0) throw new Error("Not enough cash to complete purchase.");
+
+    const existingStock = portfolio.stocks.find(s => s.symbol === symbol);
+    let newStocks;
+
+    if (type === 'buy') {
+        if (existingStock) {
+            newStocks = portfolio.stocks.map(s =>
+                s.symbol === symbol
+                    ? { ...s, quantity: s.quantity + quantity, avgPrice: ((s.avgPrice * s.quantity) + cost) / (s.quantity + quantity) }
+                    : s
+            );
+        } else {
+            newStocks = [...portfolio.stocks, { symbol, quantity, avgPrice: price }];
+        }
+    } else { // Sell
+        if (!existingStock || existingStock.quantity < quantity) {
+            throw new Error("Not enough shares to sell.");
+        }
+        newStocks = portfolio.stocks.map(s =>
+            s.symbol === symbol
+                ? { ...s, quantity: s.quantity - quantity }
+                : s
+        ).filter(s => s.quantity > 0); // Remove stock if all shares are sold
+    }
+
+    batch.update(participantRef, { cash: newCash, stocks: newStocks });
+    await batch.commit();
+};
+
+// --- API Logging ---
+export const logApiCall = async (userId, functionName, params) => {
+    if (!userId) return; // Don't log if user is not identified
+    try {
+        const logsCollection = collection(db, 'api_logs');
+        await addDoc(logsCollection, {
+            userId,
+            functionName,
+            params,
+            timestamp: serverTimestamp()
+        });
+    } catch (error) {
+        console.error("Error logging API call:", error);
+    }
+};
+
+// --- Admin Functions ---
 
 /**
- * Creates a new competition document in Firestore.
- * @param {object} competitionData - The data for the new competition.
- * @returns {Promise<string>} A promise that resolves to the new competition's ID.
+ * Fetches all users from the 'users' collection.
+ * Requires admin privileges.
+ * @returns {Promise<Array>} A promise that resolves to an array of user objects.
  */
-export const createCompetition = async (competitionData) => {
+export const getAllUsers = async () => {
   try {
-    const newCompetitionRef = await addDoc(collection(db, 'competitions'), {
-      ...competitionData,
-      ownerId: auth.currentUser.uid,
-      createdAt: serverTimestamp(),
-    });
-    return newCompetitionRef.id;
+    const usersCollection = collection(db, 'users');
+    const userSnapshot = await getDocs(usersCollection);
+    const userList = userSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    return userList;
   } catch (error) {
-    console.error('Error creating competition:', error);
+    console.error("Error fetching all users:", error);
     throw error;
   }
 };
 
 /**
- * Sends an invitation to a user to join a competition.
- * @param {string} competitionId - The ID of the competition.
- * @param {string} invitedUserId - The ID of the user being invited.
- * @returns {Promise<void>}
+ * Fetches all competitions from the 'competitions' collection.
+ * Requires admin privileges to see all, but is generally readable.
+ * @returns {Promise<Array>} A promise that resolves to an array of competition objects.
  */
-export const sendInvitation = async (competitionId, invitedUserId) => {
-    try {
-        const invitationRef = doc(db, 'competitions', competitionId, 'invitations', invitedUserId);
-        await setDoc(invitationRef, {
-            invitedAt: serverTimestamp(),
-            status: 'pending',
-            inviterId: auth.currentUser.uid,
-        });
-        console.log(`Invitation sent to ${invitedUserId} for competition ${competitionId}`);
-    } catch (error) {
-        console.error('Error sending invitation:', error);
-        throw error;
-    }
+export const getAllCompetitions = async () => {
+  try {
+    const competitionsCollection = collection(db, 'competitions');
+    const competitionSnapshot = await getDocs(competitionsCollection);
+    const competitionList = competitionSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    return competitionList;
+  } catch (error) {
+    console.error("Error fetching all competitions:", error);
+    throw error;
+  }
 };
 
-
-// --- Trading and Portfolio Management ---
-
 /**
- * Executes a stock trade (buy or sell) and updates the user's portfolio and cash balance
- * within a Firestore transaction to ensure atomicity.
- *
- * @param {object} tradeDetails - The details of the trade.
- * @param {string} tradeDetails.userId - The ID of the user making the trade.
- * @param {string} tradeDetails.competitionId - The ID of the competition.
- * @param {string} tradeDetails.symbol - The stock symbol.
- * @param {string} tradeDetails.tradeType - 'buy' or 'sell'.
- * @param {number} tradeDetails.quantity - The number of shares to trade.
- * @param {number} tradeDetails.price - The price per share.
- * @returns {Promise<void>} A promise that resolves when the trade is complete.
- * @throws {Error} If the transaction fails (e.g., insufficient funds or shares).
+ * Fetches all API logs from the 'api_logs' collection.
+ * Requires admin privileges.
+ * @returns {Promise<Array>} A promise that resolves to an array of log objects.
  */
-export const executeTrade = async ({ userId, competitionId, symbol, tradeType, quantity, price }) => {
-  if (!userId || !competitionId || !symbol || !tradeType || !quantity || !price) {
-    throw new Error('Missing required parameters for executeTrade');
-  }
-
-  const participantDocRef = doc(db, 'competitions', competitionId, 'participants', userId);
-  const totalCost = price * quantity;
-
+export const getApiLogs = async () => {
   try {
-    await runTransaction(db, async (transaction) => {
-      const participantDoc = await transaction.get(participantDocRef);
-
-      if (!participantDoc.exists()) {
-        throw new Error('Participant not found in this competition.');
-      }
-
-      const participantData = participantDoc.data();
-      const currentCash = participantData.cash;
-      const currentPortfolio = participantData.portfolio || {};
-      const currentShares = currentPortfolio[symbol]?.quantity || 0;
-
-      if (tradeType === 'buy') {
-        // --- Buy Logic ---
-        if (currentCash < totalCost) {
-          throw new Error('Insufficient funds to complete the purchase.');
-        }
-
-        const newCash = currentCash - totalCost;
-        const newShares = currentShares + quantity;
-        const newPortfolio = {
-          ...currentPortfolio,
-          [symbol]: {
-            quantity: newShares,
-            // We could store average cost here in the future
-          },
-        };
-
-        transaction.update(participantDocRef, { portfolio: newPortfolio, cash: newCash });
-      } else if (tradeType === 'sell') {
-        // --- Sell Logic ---
-        if (currentShares < quantity) {
-          throw new Error('Insufficient shares to sell.');
-        }
-
-        const newCash = currentCash + totalCost;
-        const newShares = currentShares - quantity;
-        const newPortfolio = { ...currentPortfolio };
-
-        if (newShares === 0) {
-          delete newPortfolio[symbol]; // Remove stock from portfolio if all shares are sold
-        } else {
-          newPortfolio[symbol].quantity = newShares;
-        }
-
-        transaction.update(participantDocRef, { portfolio: newPortfolio, cash: newCash });
-      } else {
-        throw new Error(`Invalid trade type: ${tradeType}`);
-      }
-
-      // Record the transaction for historical purposes
-      const transactionLogRef = collection(participantDocRef, 'transactions');
-      transaction.set(doc(transactionLogRef), {
-        symbol,
-        tradeType,
-        quantity,
-        price,
-        totalValue: totalCost,
-        timestamp: serverTimestamp(),
-      });
+    const logsCollection = collection(db, 'api_logs');
+    const logSnapshot = await getDocs(logsCollection);
+    const logList = logSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    // Sort logs by timestamp, newest first
+    logList.sort((a, b) => {
+        const aTimestamp = a.timestamp?.toMillis() || 0;
+        const bTimestamp = b.timestamp?.toMillis() || 0;
+        return bTimestamp - aTimestamp;
     });
-    console.log('Trade executed successfully!');
+    return logList;
   } catch (error) {
-    console.error('Firestore transaction failed:', error);
-    // Re-throw the error so the UI can display a message to the user.
+    console.error("Error fetching API logs:", error);
     throw error;
   }
 };
