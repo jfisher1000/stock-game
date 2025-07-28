@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { getAllUsers, getAllCompetitions, getApiLogs } from '@/api/firebaseAPI';
-import { format } from 'date-fns';
+import { format, subDays, startOfHour, startOfMinute, isAfter } from 'date-fns';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 // --- Sub-components for each tab ---
 
@@ -29,37 +30,130 @@ const AnalyticsTab = () => {
     fetchLogs();
   }, []);
 
+  const analyticsData = useMemo(() => {
+    if (!logs.length) return null;
+
+    const now = new Date();
+    const twentyFourHoursAgo = subDays(now, 1);
+
+    const recentLogs = logs.filter(log =>
+      log.timestamp && isAfter(log.timestamp.toDate(), twentyFourHoursAgo)
+    );
+
+    const alphaVantageCalls = logs.filter(log =>
+      log.functionName?.includes('searchStocks') || log.functionName?.includes('getQuote')
+    ).length;
+
+    const callsByHour = recentLogs.reduce((acc, log) => {
+      const hour = format(startOfHour(log.timestamp.toDate()), 'yyyy-MM-dd HH:mm');
+      acc[hour] = (acc[hour] || 0) + 1;
+      return acc;
+    }, {});
+
+    const chartData = Object.entries(callsByHour)
+      .map(([time, calls]) => ({ name: format(new Date(time), 'ha'), calls }))
+      .sort((a, b) => new Date(a.time) - new Date(b.time));
+
+
+    const callsByMinute = recentLogs.reduce((acc, log) => {
+        const minute = format(startOfMinute(log.timestamp.toDate()), 'yyyy-MM-dd HH:mm');
+        acc[minute] = (acc[minute] || 0) + 1;
+        return acc;
+    }, {});
+
+    const peakCallsPerMinute = Math.max(0, ...Object.values(callsByMinute));
+
+    return {
+      totalApiCalls: logs.length,
+      alphaVantageCalls,
+      peakCallsPerMinute,
+      chartData,
+    };
+  }, [logs]);
+
+
   if (loading) return <div>Loading Analytics...</div>;
   if (error) return <div className="text-red-500">{error}</div>;
+  if (!analyticsData) return <div>No API log data available.</div>;
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>API Usage Logs</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Timestamp</TableHead>
-              <TableHead>User ID</TableHead>
-              <TableHead>API Function</TableHead>
-              <TableHead>Symbol</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {logs.map((log) => (
-              <TableRow key={log.id}>
-                <TableCell>{log.timestamp ? format(log.timestamp.toDate(), 'yyyy-MM-dd HH:mm:ss') : 'N/A'}</TableCell>
-                <TableCell className="font-mono text-xs">{log.userId}</TableCell>
-                <TableCell>{log.functionName}</TableCell>
-                <TableCell>{log.params?.symbol || 'N/A'}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
+    <div className="space-y-4">
+        {/* Metric Cards */}
+        <div className="grid gap-4 md:grid-cols-3">
+            <Card>
+                <CardHeader>
+                    <CardTitle>Total API Calls (All Time)</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="text-2xl font-bold">{analyticsData.totalApiCalls}</div>
+                </CardContent>
+            </Card>
+            <Card>
+                <CardHeader>
+                    <CardTitle>Alpha Vantage Calls (All Time)</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="text-2xl font-bold">{analyticsData.alphaVantageCalls}</div>
+                </CardContent>
+            </Card>
+            <Card>
+                <CardHeader>
+                    <CardTitle>Peak Calls/Minute (Last 24h)</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="text-2xl font-bold">{analyticsData.peakCallsPerMinute}</div>
+                </CardContent>
+            </Card>
+        </div>
+
+        {/* Chart */}
+        <Card>
+            <CardHeader>
+                <CardTitle>API Calls in Last 24 Hours</CardTitle>
+            </CardHeader>
+            <CardContent>
+                <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={analyticsData.chartData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="name" />
+                        <YAxis />
+                        <Tooltip />
+                        <Legend />
+                        <Bar dataKey="calls" fill="#8884d8" />
+                    </BarChart>
+                </ResponsiveContainer>
+            </CardContent>
+        </Card>
+
+        {/* Raw Logs Table */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Raw API Usage Logs</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Timestamp</TableHead>
+                  <TableHead>User ID</TableHead>
+                  <TableHead>API Function</TableHead>
+                  <TableHead>Parameters</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {logs.map((log) => (
+                  <TableRow key={log.id}>
+                    <TableCell>{log.timestamp ? format(log.timestamp.toDate(), 'yyyy-MM-dd HH:mm:ss') : 'N/A'}</TableCell>
+                    <TableCell className="font-mono text-xs">{log.userId}</TableCell>
+                    <TableCell>{log.functionName}</TableCell>
+                    <TableCell className="font-mono text-xs">{log.params ? JSON.stringify(log.params) : 'N/A'}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+    </div>
   );
 };
 
