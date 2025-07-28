@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { getAllUsers, getAllCompetitions, getApiLogs } from '@/api/firebaseAPI';
 import { format, subDays, startOfHour, startOfMinute, isAfter } from 'date-fns';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 // --- Sub-components for each tab ---
 
@@ -45,14 +45,17 @@ const AnalyticsTab = () => {
     ).length;
 
     const callsByHour = recentLogs.reduce((acc, log) => {
-      const hour = format(startOfHour(log.timestamp.toDate()), 'yyyy-MM-dd HH:mm');
+      const hour = format(startOfHour(log.timestamp.toDate()), 'yyyy-MM-dd HH:00');
       acc[hour] = (acc[hour] || 0) + 1;
       return acc;
     }, {});
 
     const chartData = Object.entries(callsByHour)
-      .map(([time, calls]) => ({ name: format(new Date(time), 'ha'), calls }))
-      .sort((a, b) => new Date(a.time) - new Date(b.time));
+      .sort(([timeA], [timeB]) => new Date(timeA) - new Date(timeB))
+      .map(([time, calls]) => ({
+        name: format(new Date(time), 'ha'), // Format as "1PM", "2PM" etc.
+        calls,
+      }));
 
 
     const callsByMinute = recentLogs.reduce((acc, log) => {
@@ -113,45 +116,16 @@ const AnalyticsTab = () => {
             </CardHeader>
             <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={analyticsData.chartData}>
+                    <LineChart data={analyticsData.chartData}>
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="name" />
-                        <YAxis />
+                        <YAxis allowDecimals={false} />
                         <Tooltip />
                         <Legend />
-                        <Bar dataKey="calls" fill="#8884d8" />
-                    </BarChart>
+                        <Line type="monotone" dataKey="calls" stroke="#8884d8" activeDot={{ r: 8 }} />
+                    </LineChart>
                 </ResponsiveContainer>
             </CardContent>
-        </Card>
-
-        {/* Raw Logs Table */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Raw API Usage Logs</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Timestamp</TableHead>
-                  <TableHead>User ID</TableHead>
-                  <TableHead>API Function</TableHead>
-                  <TableHead>Parameters</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {logs.map((log) => (
-                  <TableRow key={log.id}>
-                    <TableCell>{log.timestamp ? format(log.timestamp.toDate(), 'yyyy-MM-dd HH:mm:ss') : 'N/A'}</TableCell>
-                    <TableCell className="font-mono text-xs">{log.userId}</TableCell>
-                    <TableCell>{log.functionName}</TableCell>
-                    <TableCell className="font-mono text-xs">{log.params ? JSON.stringify(log.params) : 'N/A'}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
         </Card>
     </div>
   );
