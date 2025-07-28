@@ -21,9 +21,9 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-// CORRECTED IMPORT PATH: Points to the actual location of the use-toast hook.
 import { useToast } from '@/components/ui/use-toast'; 
-import { executeTrade } from '@/api/firebaseApi';
+// CORRECTED IMPORT PATH: Matches the case of the actual filename 'firebaseAPI.js'.
+import { executeTrade } from '@/api/firebaseAPI';
 
 const TradeModal = ({ isOpen, onOpenChange, stock, competitionId, userId }) => {
   const [tradeType, setTradeType] = useState('buy');
