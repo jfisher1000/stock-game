@@ -2,11 +2,11 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { useState, useEffect } from 'react';
-// **FIXED**: Changed the import from a named import { firebaseConfig } to a default import.
 import firebaseConfig from '@/config/environment';
 
 // Initialize Firebase
-const app = initializeApp(firebaseConfig);
+// **FIXED**: Added the 'export' keyword to make the app instance available to other modules.
+export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 
