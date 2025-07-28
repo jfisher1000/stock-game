@@ -5,8 +5,7 @@
  *
  * This file is adapted from shadcn/ui. The Toaster component is responsible
  * for rendering all toast notifications in the application. It should be
-- * placed at the root of the application so that toasts can be displayed
-+ * placed at the root of the application so that toasts can be displayed
+ * placed at the root of the application so that toasts can be displayed
  * from any page or component.
  */
 
@@ -18,7 +17,8 @@ import {
   ToastTitle,
   ToastViewport,
 } from "@/components/ui/toast";
-import { useToast } from "@/hooks/use-toast";
+// CORRECTED IMPORT PATH: Points to the actual location of the use-toast hook.
+import { useToast } from "@/components/ui/use-toast";
 
 export function Toaster() {
   const { toasts } = useToast();
