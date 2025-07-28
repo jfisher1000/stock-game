@@ -1,22 +1,21 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
+import { fileURLToPath, URL } from 'node:url' // Import necessary modules
 
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
-  // This section configures the path alias for Vite.
-  // It tells Vite that any import starting with '@/'
-  // should be resolved from the 'src' directory.
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
+      // This is the modern, robust way to set up a path alias in Vite.
+      // It uses 'import.meta.url' to ensure the path is resolved correctly.
+      '@': fileURLToPath(new URL('./src', import.meta.url))
     },
   },
-  // This section helps ensure the dev server reliably
-  // detects file changes in certain environments.
   server: {
     watch: {
+      // This setting can help with file change detection in some environments.
       usePolling: true,
     },
   },
