@@ -86,7 +86,7 @@ const CompetitionDetailPage = () => {
         <Card className="max-w-md mx-auto mt-10">
             <CardHeader>
                 <CardTitle className="text-error">Error</CardTitle>
-            </Header>
+            </CardHeader>
             <CardContent>
                 <p className="text-text-secondary">{error}</p>
                 <Button asChild className="mt-6">
